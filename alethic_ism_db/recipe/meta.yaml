@@ -1,0 +1,27 @@
+package:
+  name: alethic-ism-db
+  version: "0.3.0"
+
+source:
+  path: ../
+  #url: https://github.com/quantumwake/alethic-processor/v0.1.0.tar.gz
+  # or use git_rev for a specific branch or commit
+#  git_url: https://github.com/quantumwake/alethic-processor.git
+#  git_rev: main
+
+build:
+  number: 21
+  script: "{{ PYTHON }} -m pip install . -vv"
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+
+about:
+  home: https://github.com/quantumwake/alethic-ism-db
+  license: GPL-3.0-or-later
+  license_file: LICENSE
+  summary: "Alethic - Instruction-Based State Machine (DB)"  # Brief summary of your package
