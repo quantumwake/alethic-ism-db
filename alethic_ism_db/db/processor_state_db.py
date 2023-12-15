@@ -43,11 +43,10 @@ class ProcessorStateDatabaseStorage:
         hash_key = general_utils.calculate_hash(hash_key)
         return hash_key
 
-    # def create_state_id(self, ):
-    #     state_type = type(state.config).__name__
-    #     hash_key = f'{state.config.name}:{state.config.version}:{state_type}'
-    #     hash_key = general_utils.calculate_hash(hash_key)
-    #     return hash_key
+    def create_state_id(self, name: str, version: str, state_type: str):
+        hash_key = f'{name}:{version}:{state_type}'
+        hash_key = general_utils.calculate_hash(hash_key)
+        return hash_key
 
     def create_connection(self):
         return psycopg2.connect(self.database_url)
@@ -493,9 +492,9 @@ class ProcessorStateDatabaseStorage:
 
 
     def insert_state_primary_key_definition(self, state: State):
-        primary_key_definition = state.config.output_primary_key_definition
+        primary_key_definition = state.config.primary_key
         self.insert_state_key_definition(state=state,
-                                         key_definition_type='output_primary_key_definition',
+                                         key_definition_type='primary_key',
                                          definitions=primary_key_definition)
 
     def insert_state_include_extra_from_input_definition(self, state: State):
@@ -645,9 +644,9 @@ class ProcessorStateDatabaseStorage:
         state_type = state_dict['state_type']
 
         # rebuild the key definitions
-        output_primary_key_definition = self.fetch_state_key_definition(
+        primary_key = self.fetch_state_key_definition(
             state_id=state_id,
-            definition_type="output_primary_key_definition")
+            definition_type="primary_key")
 
         include_extra_from_input_definition = self.fetch_state_key_definition(
             state_id=state_id,
@@ -658,7 +657,7 @@ class ProcessorStateDatabaseStorage:
         general_attributes = {
             "name": state_dict['name'],
             "version": state_dict['version'],
-            "output_primary_key_definition": output_primary_key_definition,
+            "primary_key": primary_key,
             "include_extra_from_input_definition": include_extra_from_input_definition,
         }
 
