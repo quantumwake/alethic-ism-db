@@ -339,7 +339,7 @@ class ProcessorStateDatabaseStorage:
                 """
                 cursor.execute(sql, [state_id])
                 rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                results = self.map_rows_to_dicts(cursor, rows) if rows else {}
 
                 if results:
                     results = {
@@ -561,9 +561,16 @@ class ProcessorStateDatabaseStorage:
                 else:
                     return None
 
-            user_template_path = convert_template(config.user_template_path, "user_template")
-            system_template_path = convert_template(config.system_template_path, "system_template")
+            # if we are loading the template into the database for the first time
+            # usually when the storage class is default set to a file instead
+            if 'file' == config.storage_class.lower():
+                user_template_path = convert_template(config.user_template_path, "user_template")
+                system_template_path = convert_template(config.system_template_path, "system_template")
+            else:
+                user_template_path = config.user_template_path
+                system_template_path = config.system_template_path
 
+            # additional parameters required for config lm
             attributes.extend([
                 {
                     "name": "provider_name",
