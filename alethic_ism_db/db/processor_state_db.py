@@ -200,9 +200,10 @@ class ProcessorStateDatabaseStorage:
 
                 cursor.execute(sql, [])
                 rows = cursor.fetchall()
-                result = self.map_rows_to_dicts(cursor, rows) if rows else None
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                # result = [State(**r) for r in results]
 
-            return result
+            return results
         except Exception as e:
             logging.error(e)
             raise e
@@ -339,10 +340,13 @@ class ProcessorStateDatabaseStorage:
                 cursor.execute(sql, [state_id])
                 rows = cursor.fetchall()
                 results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                results = {
-                    attribute['attribute']: attribute['data']
-                    for attribute in results
-                }
+
+                if results:
+                    results = {
+                        attribute['attribute']: attribute['data']
+                        for attribute in results
+                    }
+
             return results
         except Exception as e:
             logging.error(e)
@@ -966,7 +970,7 @@ class ProcessorStateDatabaseStorage:
 
         # rebuild the data values by column and values
         state.data = {
-            column: self.fetch_state_data_by_column_id(column_definition['id'])
+            column: self.fetch_state_data_by_column_id(column_definition.id)
             for column, column_definition in state.columns.items()
         }
 
@@ -993,15 +997,11 @@ class ProcessorStateDatabaseStorage:
         return state
 
     def save_state(self, state: State):
-
-        self.insert_state(state=state)
+        state_id = self.insert_state(state=state)
         self.insert_state_config(state=state)
         self.insert_state_columns(state=state)
         self.insert_state_columns_data(state=state)
         self.insert_state_column_data_mapping(state=state)
         self.insert_state_primary_key_definition(state=state)
         self.insert_query_state_inheritance_key_definition(state=state)
-
-    # async def save_state_async(self, state: State):
-    #     await self.insert_state_async(state=state)
-#
+        return state_id

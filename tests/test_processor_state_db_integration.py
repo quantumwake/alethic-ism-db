@@ -12,10 +12,10 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@l
 def create_mock_state() -> State:
     state = State(
         config=StateConfigLM(
-            name="Test Me",
-            version="Test version 1.0",
-            model_name="Hello World Model",
-            provider_name="Hello World Provider",
+            name="Test Language Model Configuration with Template",
+            version="Test version 0.0.0",
+            model_name="OpenAI",
+            provider_name="gpt4",
             user_template_path="./test_templates/test_template_P1_user.json",
             system_template_path="./test_templates/test_template_P1_system.json"
         )
@@ -182,4 +182,27 @@ def test_state_persistence():
     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     db_storage.save_state(state=state)
 
+def test_state_config_lm():
+
+    lm_new_state = create_mock_state()
+    assert isinstance(lm_new_state.config, StateConfigLM)
+
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    state_id = db_storage.save_state(state=lm_new_state)
+
+    lm_load_state = db_storage.load_state(state_id=state_id)
+    assert isinstance(lm_load_state.config, StateConfigLM)
+
+
+def test_create_state():
+    state1 = create_mock_state()
+    state2 = create_mock_input_state()
+
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    state_id_1 = db_storage.save_state(state=state1)
+    state_id_2 = db_storage.save_state(state=state2)
+
+    states = db_storage.fetch_states()
+    states = [s for s in states if s['id'] in [state_id_1, state_id_2]]
+    assert len(states) == 2
 
