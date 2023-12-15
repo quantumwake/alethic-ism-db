@@ -16,6 +16,7 @@ dependencies = [
     "pydantic",         # this should be a dependency of the ism-core, TODO figure this out
     "alethic-ism-core",
     "psycopg2",
+#    "asyncpg",
     "transformers",
     "nltk",
     "torch"

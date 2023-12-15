@@ -13,9 +13,14 @@ This is required to ensure that the correct pytorch is installed on Apple Silico
 
 Use conda build via the build.sh script
 
-- python-dotenv,
-- pyyaml,
+- python-dotenv
+- pyyaml
 - pydantic
+
+# Unsupported (But Planned)
+Async support is not yet available, need to make some changes and add in sqlalchemy and make this database agnostic
+
+- asyncpg (*currently not supported, need to do a lot of refactoring maybe next version)
 
 # Initialize Conda
 

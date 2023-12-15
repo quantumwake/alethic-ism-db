@@ -1,8 +1,7 @@
 from typing import List, Any
-
-import psycopg2
 import logging as log
 
+from asyncpg import connect
 from core.processor_state import (
     State,
     StateDataKeyDefinition,
@@ -56,7 +55,17 @@ class ProcessorStateDatabaseStorage:
         return create_state_id_by_config(config=state.config)
 
     def create_connection(self):
+        import psycopg2
         return psycopg2.connect(self.database_url)
+
+    # TODO add async support
+    # async def create_connection_async(self):
+    #     """Create a connection to the PostgreSQL database."""
+    #
+    #     connection = await connect(
+    #         "dbname=my_database user=postgres password=password"
+    #     )
+    #     return connection
 
     def fetch_state_data_by_column_id(self, column_id: int):
         conn = self.create_connection()
@@ -175,6 +184,13 @@ class ProcessorStateDatabaseStorage:
             raise e
         finally:
             conn.close()
+    #
+    # async def insert_state_async(self, state: State):
+    #     conn = await self.create_connection_async()
+    #     await self._insert_state(conn, state=state)
+
+    # TODO probably should be using async support, with sqlalchemy instead of doing it this way
+    #  maybe do this in the future when we get some more time.
 
     def insert_state(self, state: State):
         conn = self.create_connection()
@@ -197,7 +213,6 @@ class ProcessorStateDatabaseStorage:
                     cursor.execute(sql, values)
                 else:
                     hash_key = result['id']
-
             conn.commit()
         except Exception as e:
             logging.error(e)
@@ -735,3 +750,8 @@ class ProcessorStateDatabaseStorage:
         self.insert_state_column_data_mapping(state=state)
         self.insert_state_primary_key_definition(state=state)
         self.insert_query_state_inheritance_key_definition(state=state)
+
+    # async def save_state_async(self, state: State):
+    #     await self.insert_state_async(state=state)
+#
+
