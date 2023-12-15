@@ -1,7 +1,6 @@
 from typing import List, Any
 import logging as log
 
-from asyncpg import connect
 from core.processor_state import (
     State,
     StateDataKeyDefinition,
@@ -9,9 +8,11 @@ from core.processor_state import (
     StateConfig,
     StateDataColumnDefinition,
     StateDataRowColumnData,
-    StateDataColumnIndex
+    StateDataColumnIndex, InstructionTemplate
 )
 from core.utils import general_utils
+
+from .model import Model, Processor, ProcessorState
 
 logging = log.getLogger(__name__)
 
@@ -66,6 +67,79 @@ class ProcessorStateDatabaseStorage:
     #         "dbname=my_database user=postgres password=password"
     #     )
     #     return connection
+
+    def fetch_templates(self):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    select template_path, template_content, template_type from template
+                """
+
+                cursor.execute(sql, [])
+                rows = cursor.fetchall()
+                data = [InstructionTemplate(
+                    template_path=row[0],
+                    template_content=row[1],
+                    template_type=row[2]
+                ) for row in rows]
+
+            return data
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def fetch_processor_states(self):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    select processor_id, input_state_id, output_state_id from processor_state
+                """
+
+                cursor.execute(sql, [])
+                rows = cursor.fetchall()
+                data = [ProcessorState(
+                    processor_id=row[0],
+                    input_state_id=row[1],
+                    output_state_id=row[2]
+                ) for row in rows]
+
+            return data
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def fetch_template(self, template_path: str):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    select template_path, template_content, template_type from template
+                    where template_path = %s
+                """
+
+                cursor.execute(sql, [template_path])
+                row = cursor.fetchone()
+                data = InstructionTemplate(
+                    template_path=row[0],
+                    template_content=row[1],
+                    template_type=row[2]
+                )
+
+            return data
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
 
     def fetch_state_data_by_column_id(self, column_id: int):
         conn = self.create_connection()
@@ -184,6 +258,7 @@ class ProcessorStateDatabaseStorage:
             raise e
         finally:
             conn.close()
+
     #
     # async def insert_state_async(self, state: State):
     #     conn = await self.create_connection_async()
@@ -191,6 +266,36 @@ class ProcessorStateDatabaseStorage:
 
     # TODO probably should be using async support, with sqlalchemy instead of doing it this way
     #  maybe do this in the future when we get some more time.
+
+    def insert_model(self, model: Model):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = f"""
+                    INSERT INTO model (provider_name, model_name)
+                         VALUES (%s, %s)
+                             ON CONFLICT (provider_name, model_name) 
+                      DO UPDATE SET provider_name = EXCLUDED.provider_name, model_name = EXCLUDED.model_name
+                    RETURNING id
+                """
+
+                # sql = f"""insert into model (provider_name, model_name) values (%s, %s) RETURNING id"""
+                values = [model.provider_name, model.model_name]
+                cursor.execute(sql, values)
+
+                # fetch id value
+                model.id = cursor.fetchone()[0]
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+        return model
 
     def insert_state(self, state: State):
         conn = self.create_connection()
@@ -245,10 +350,81 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
+    def fetch_processors(self):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""select * from processor"""
+
+                cursor.execute(sql, [])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                results = [Processor(**row) for row in results]
+
+            return results
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def fetch_processor_states(self):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""select * from processor_state"""
+
+                cursor.execute(sql, [])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                results = [ProcessorState(**row) for row in results]
+
+            return results
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def fetch_models(self):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""select * from model"""
+
+                cursor.execute(sql, [])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                results = [Model(**row) for row in results]
+
+            return results
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def delete_template(self, template_path):
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """DELETE FROM template WHERE template_path = %s"""
+                cursor.execute(sql, [template_path])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
     def insert_template(self,
-                        template_path: str,
-                        template_content: str,
-                        template_type: str):
+                        template_path: str = None,
+                        template_content: str = None,
+                        template_type: str = None,
+                        instruction_template: InstructionTemplate = None):
 
         try:
             conn = self.create_connection()
@@ -260,6 +436,8 @@ class ProcessorStateDatabaseStorage:
                                    %s AS template_content, 
                                    %s AS template_type) AS source
                              ON target.template_path = source.template_path 
+                          WHEN MATCHED THEN 
+                              UPDATE SET template_content = source.template_content
                           WHEN NOT MATCHED THEN 
                               INSERT (template_path, template_content, template_type)
                               VALUES (
@@ -268,11 +446,21 @@ class ProcessorStateDatabaseStorage:
                                    source.template_type)
                       """
 
-                values = [
-                    template_path,
-                    template_content,
-                    template_type,
-                ]
+                if instruction_template:
+                    values = [
+                        instruction_template.template_path,
+                        instruction_template.template_content,
+                        instruction_template.template_type,
+                    ]
+                elif template_path and template_content and template_type:
+                    values = [
+                        template_path,
+                        template_content,
+                        template_type
+                    ]
+                else:
+                    raise ValueError(f'must specify either the instruction_template or template_path, '
+                                     f'template_content and template_type')
 
                 cursor.execute(sql, values)
 
@@ -282,6 +470,67 @@ class ProcessorStateDatabaseStorage:
             raise e
         finally:
             conn.close()
+
+    def insert_processor_state(self, processor_state: ProcessorState):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """
+                insert into processor_state (
+                    processor_id, 
+                    input_state_id,
+                    output_state_id) 
+                values (%s, %s, %s) 
+                ON CONFLICT (processor_id, input_state_id, output_state_id) 
+                DO NOTHING
+                """
+
+                cursor.execute(sql, [
+                    processor_state.processor_id,
+                    processor_state.input_state_id,
+                    processor_state.output_state_id
+                ])
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def insert_processor(self, processor: Processor):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""
+                    INSERT INTO processor (name, type, model_id)
+                         VALUES (%s, %s, %s)
+                             ON CONFLICT (name, type, model_id) 
+                      DO UPDATE SET 
+                           name = EXCLUDED.name, 
+                           type = EXCLUDED.type, 
+                       model_id = EXCLUDED.model_id
+                    RETURNING id
+                """
+                cursor.execute(sql, [
+                    processor.name,
+                    processor.type,
+                    processor.model_id
+                ])
+
+                # fetch id value
+                processor.id = cursor.fetchone()[0]
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+        return processor
 
     def insert_state_config(self, state: State):
 
@@ -351,6 +600,8 @@ class ProcessorStateDatabaseStorage:
                                    %s AS data) AS source
                              ON target.state_id = source.state_id 
                             AND target.attribute = source.attribute
+                          WHEN MATCHED THEN 
+                              UPDATE SET data = source.data
                           WHEN NOT MATCHED THEN 
                               INSERT (state_id, attribute, data)
                               VALUES (
@@ -754,4 +1005,3 @@ class ProcessorStateDatabaseStorage:
     # async def save_state_async(self, state: State):
     #     await self.insert_state_async(state=state)
 #
-

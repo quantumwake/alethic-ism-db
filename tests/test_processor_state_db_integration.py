@@ -1,10 +1,10 @@
 import os
 import random
-# import pytest
 
-from core.processor_state import State, StateConfigLM
+from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition
 
-from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage
+from alethic_ism_db.db.model import ProcessorState, Processor, Model
+from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage, create_state_id_by_config
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 
@@ -34,6 +34,144 @@ def create_mock_state() -> State:
             state.apply_row_data(query_state=query_state)
 
     return state
+
+
+def create_mock_input_state() -> State:
+    state = State(
+        config=StateConfig(
+            name="Test Me (Animals)",
+            version="Test version 0.0",
+            primary_key=[
+                StateDataKeyDefinition(name="animal")
+            ]
+        )
+    )
+
+    query_states = [
+        {"animal": "cat"},
+        {"animal": "dog"},
+        {"animal": "pig"},
+        {"animal": "cow"}
+    ]
+
+    for query_state in query_states:
+        state.apply_columns(query_state=query_state)
+        state.apply_row_data(query_state=query_state)
+
+    return state
+
+
+def create_mock_model():
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+
+    model = Model(
+        provider_name="Test Provider A",
+        model_name="Test Model Name A"
+    )
+
+    model = db_storage.insert_model(model=model)
+    return model
+
+
+def create_mock_processor():
+    model = create_mock_model()
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+
+    processor = Processor(
+        name="Test Processor A",
+        type="Language",
+        model_id=model.id
+    )
+
+    processor = db_storage.insert_processor(processor=processor)
+    return processor
+
+def create_mock_processor_state():
+    mock_output_state = create_mock_state()
+    mock_input_state = create_mock_input_state()
+
+    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    input_state_id = storage.insert_state(state=mock_input_state)
+    output_state_id = storage.insert_state(state=mock_output_state)
+
+    processor = create_mock_processor()
+    processor_state = ProcessorState(
+        processor_id=processor.id,
+        input_state_id=input_state_id,
+        output_state_id=output_state_id
+    )
+    storage.insert_processor_state(processor_state=processor_state)
+    return processor_state
+
+
+def test_create_template():
+    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+
+    for i in range (10):
+        instruction = InstructionTemplate(
+            template_path=f"test/template/{i}",
+            template_content="hello world {i}",
+            template_type="user_template"
+        )
+        storage.insert_template(instruction_template=instruction)
+
+    templates = [ x for x in storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    assert len(templates) == 10
+
+    for template in templates:
+        storage.delete_template(template_path=template.template_path)
+
+    templates = [ x for x in storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    assert len(templates) == 0
+
+
+def test_fetch_models():
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    models = db_storage.fetch_models()
+    assert len(models) > 0
+
+def test_create_model():
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+
+    # create a mock model
+    model = create_mock_model()
+
+    assert model.id is not None
+    models = [m for m in db_storage.fetch_models()
+              if m.model_name == model.model_name
+              and m.provider_name == model.provider_name]
+
+    assert len(models) == 1
+
+
+def test_create_processor():
+    processor = create_mock_processor()
+    assert processor.id is not None
+
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    processors = db_storage.fetch_processors()
+    processors = [proc for proc in processors if proc.id == processor.id]
+
+    assert len(processors) == 1
+    assert processors[0].name == processor.name
+    assert processors[0].model_id == processor.model_id
+    assert processors[0].type == processor.type
+
+
+def test_create_processor_state():
+    processor_state = create_mock_processor_state()
+    assert processor_state.processor_id is not None
+
+    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    processor_states = db_storage.fetch_processor_states()
+    processor_states = [
+        procstate for procstate in processor_states
+        if procstate.processor_id == processor_state.processor_id
+           and procstate.output_state_id == processor_state.output_state_id
+           and procstate.input_state_id == processor_state.input_state_id
+    ]
+
+    assert len(processor_states) == 1
 
 
 def test_state_persistence():

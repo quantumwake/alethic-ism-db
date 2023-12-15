@@ -10,6 +10,9 @@ create table template (
 
 select * from template;
 
+-- select * from state where id = 'ea6ee46f537da30c47443138b970eaba40f7628a0bc669f29cc43c3c6c4efce3';
+-- select * from state_column where state_id = 'ea6ee46f537da30c47443138b970eaba40f7628a0bc669f29cc43c3c6c4efce3';
+
 create table state
 (
     id varchar(255) not null primary key,
@@ -20,6 +23,14 @@ create table state
 );
 
 select * from state;
+
+/*
+select c.name, c.value, d.data_index, d.data_value from state_column_data d
+  inner join state_column c
+    on c.id = d.column_id
+where state_id = '271bb8e81c7b6826a6efce152488bec7bc3bf4a41f519f7ea56b7c71bea13744'
+order by c.name, d.data_index;
+*/
 
 drop table if exists state_config;
 
@@ -46,8 +57,8 @@ create table state_column_key_definition(
 
 select * from state_column_key_definition;
 
--- update state_column_key_definition set definition_type = 'primary_key' where definition_type = 'output_primary_key_definition';
--- commit;
+update state_column_key_definition set definition_type = 'query_state_inheritance' where definition_type = 'include_extra_from_input_definition';
+commit;
 
 ---
 
@@ -92,30 +103,40 @@ select * from state_column_data_mapping;
 
 select count(*) from state_column_data_mapping;
 
-drop table if exists processor cascade;
+drop table if exists model cascade;
 
-create table processor (
-    id varchar(255) not null primary key,
-    type varchar(255) not null
+create table model (
+    id serial primary key,
+    provider_name varchar(255) not null,
+    model_name varchar(255) not null,
+    unique (provider_name, model_name)
 );
 
-insert into processor (id, type) values ('AnthropicQuestionAnswerProcessor',
-                                         'Language');
+insert into model (provider_name, model_name) values ('OpenAI', 'gpt-4-1106-preview');
+insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.0');
+insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.1');
+commit;
 
-insert into processor (id, type) values ('OpenAIQuestionAnswerProcessor',
-                                         'Language');
+select * from model;
+
+drop table if exists processor cascade;
+create table processor (
+    id serial not null primary key,
+    name varchar(255) not null,
+    type varchar(255) not null,
+    model_id bigint not null references model(id),
+    unique (name, type, model_id)
+);
+
+insert into processor (name, type, model_id) values ('AnthropicQuestionAnswerProcessor', 'Language', 1);
+insert into processor (name, type, model_id) values ('OpenAIQuestionAnswerProcessor', 'Language', 2);
+insert into processor (name, type, model_id) values ('OpenAIQuestionAnswerProcessor', 'Language', 3);
 
 drop table if exists processor_state;
+
 create table processor_state (
-    processor_id varchar(255) not null references processor (id),
+    processor_id int not null references processor (id),
     input_state_id  varchar(255) not null references state (id),
     output_state_id varchar(255) not null references state (id),
     primary key (processor_id, input_state_id, output_state_id)
 );
-
-
--- with x as (
---     select * from state_column where state_id = '222cab9859359ccd850c8bca7825c691183043df1a3fb15812d640a28d4ea0ab'
--- )
--- select * from state_column_data
---     where column_id in (select id from x);
