@@ -17,6 +17,21 @@ from core.utils import general_utils
 logging = log.getLogger(__name__)
 
 
+def create_state_id_by_config(config: StateConfig):
+    state_config_type = type(config).__name__
+    hash_key = f'{config.name}:{config.version}:{state_config_type}'
+
+    if isinstance(config, StateConfigLM):
+        provider = config.provider_name
+        model_name = config.model_name
+        user_template = config.user_template_path  # just a name not a path
+        system_template = config.system_template_path  # just a name not a path
+        hash_key = f'{hash_key}:{provider}:{model_name}:{user_template}:{system_template}'
+
+    hash_key = general_utils.calculate_hash(hash_key)
+    return hash_key
+
+
 class ProcessorStateDatabaseStorage:
 
     def __init__(self, database_url):
@@ -38,15 +53,7 @@ class ProcessorStateDatabaseStorage:
         return [self.map_row_to_dict(cursor, row) for row in rows]
 
     def create_state_id_by_state(self, state: State):
-        state_type = type(state.config).__name__
-        hash_key = f'{state.config.name}:{state.config.version}:{state_type}'
-        hash_key = general_utils.calculate_hash(hash_key)
-        return hash_key
-
-    def create_state_id(self, name: str, version: str, state_type: str):
-        hash_key = f'{name}:{version}:{state_type}'
-        hash_key = general_utils.calculate_hash(hash_key)
-        return hash_key
+        return create_state_id_by_config(config=state.config)
 
     def create_connection(self):
         return psycopg2.connect(self.database_url)
@@ -76,7 +83,7 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def fetch_state_columns(self, state_id: str):
+    def fetch_state_columns(self, state_id: str) -> List[StateDataColumnDefinition]:
         conn = self.create_connection()
 
         try:
@@ -87,7 +94,11 @@ class ProcessorStateDatabaseStorage:
                 results = self.map_rows_to_dicts(cursor, rows)
                 results = {row['name']: row for row in results if row['name']}
 
-            return results
+                columns = {
+                    column: StateDataColumnDefinition.model_validate(column_definition)
+                    for column, column_definition in results.items()
+                }
+            return columns
         except Exception as e:
             logging.error(e)
             raise e
@@ -155,10 +166,10 @@ class ProcessorStateDatabaseStorage:
                 ]
 
                 cursor.execute(sql, values)
-                row = cursor.fetchone()
-                result = self.map_row_to_dict(cursor, row) if row else None
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
 
-            return result
+            return results
         except Exception as e:
             logging.error(e)
             raise e
@@ -169,16 +180,13 @@ class ProcessorStateDatabaseStorage:
         conn = self.create_connection()
 
         # get the configuration type for this state
-        state_type = type(state.config).__name__
-
-        result = self.fetch_state_by_name_version(
-            name=state.config.name,
-            state_type=state_type,
-            version=state.config.version)
+        state_id = create_state_id_by_config(config=state.config)
+        result = self.fetch_state_by_state_id(state_id=state_id)
 
         try:
             with conn.cursor() as cursor:
                 if not result:
+                    state_type = type(state.config).__name__
                     hash_key = self.create_state_id_by_state(state=state)
                     sql = f"""insert into state (id, name, state_type, count, version) values (%s, %s, %s, %s, %s)"""
                     values = [hash_key,
@@ -260,8 +268,6 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-
-
     def insert_state_config(self, state: State):
 
         # switch it to a database storage class
@@ -279,7 +285,7 @@ class ProcessorStateDatabaseStorage:
             def convert_template(template_path: str, template_type: str):
                 if template_path:
                     template = general_utils.load_template(template_config_file=template_path)
-                    template_path = template['name']    # change the path to only the name for db storage
+                    template_path = template['name']  # change the path to only the name for db storage
                     self.insert_template(template_path=template_path,
                                          template_content=template['template_content'],
                                          template_type=template_type)
@@ -308,7 +314,6 @@ class ProcessorStateDatabaseStorage:
                     "data": system_template_path
                 }
             ])
-
 
         # create a new state
         state_id = self.create_state_id_by_state(state=state)
@@ -358,7 +363,9 @@ class ProcessorStateDatabaseStorage:
         state_id = self.create_state_id_by_state(state)
         existing_columns = self.fetch_state_columns(state_id=state_id)
 
-        create_columns = {column: header for column, header in state.columns.items() if column not in existing_columns}
+        create_columns = {column: header
+                          for column, header in state.columns.items()
+                          if column not in existing_columns}
 
         if not create_columns:
             return
@@ -437,7 +444,7 @@ class ProcessorStateDatabaseStorage:
                                         f'ignorable if column is a constant or function')
                         continue
 
-                    column_id = header['id']
+                    column_id = header.id
 
                     for data_index, data_value in enumerate(state.data[column].values):
                         values = [
@@ -453,7 +460,6 @@ class ProcessorStateDatabaseStorage:
             raise e
         finally:
             conn.close()
-
 
     def fetch_state_key_definition(self, state_id: str, definition_type: str):
         conn = self.create_connection()
@@ -490,18 +496,17 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-
     def insert_state_primary_key_definition(self, state: State):
         primary_key_definition = state.config.primary_key
         self.insert_state_key_definition(state=state,
                                          key_definition_type='primary_key',
                                          definitions=primary_key_definition)
 
-    def insert_state_include_extra_from_input_definition(self, state: State):
-        include_extra_from_input_definition = state.config.include_extra_from_input_definition
+    def insert_query_state_inheritance_key_definition(self, state: State):
+        query_state_inheritance = state.config.query_state_inheritance
         self.insert_state_key_definition(state=state,
-                                         key_definition_type='include_extra_from_input_definition',
-                                         definitions=include_extra_from_input_definition)
+                                         key_definition_type='query_state_inheritance',
+                                         definitions=query_state_inheritance)
 
     def insert_state_key_definition(self,
                                     state: State,
@@ -574,7 +579,6 @@ class ProcessorStateDatabaseStorage:
                     logging.debug(f'no mapping found for state_id: {state_id}')
                     return
 
-
                 mappings = {}
                 for row in rows:
                     state_key = row[0]
@@ -621,7 +625,8 @@ class ProcessorStateDatabaseStorage:
                 state_id = self.create_state_id_by_state(state)
                 for state_key, state_mapping in state.mapping.items():
                     if not state_mapping.values:
-                        logging.warning(f'no values specified for state.mapping state key {state_key} in state_id: {state_id}')
+                        logging.warning(
+                            f'no values specified for state.mapping state key {state_key} in state_id: {state_id}')
                         continue
 
                     for data_index in state_mapping.values:
@@ -639,7 +644,7 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def load_state_database(self, state_id: str):
+    def load_state_basic(self, state_id: str):
         state_dict = self.fetch_state_by_state_id(state_id=state_id)
         state_type = state_dict['state_type']
 
@@ -648,9 +653,9 @@ class ProcessorStateDatabaseStorage:
             state_id=state_id,
             definition_type="primary_key")
 
-        include_extra_from_input_definition = self.fetch_state_key_definition(
+        query_state_inheritance = self.fetch_state_key_definition(
             state_id=state_id,
-            definition_type="include_extra_from_input_definition")
+            definition_type="query_state_inheritance")
 
         # fetch list of attributes associated to this state, if any
         config_attributes = self.fetch_state_config(state_id=state_id)
@@ -658,7 +663,7 @@ class ProcessorStateDatabaseStorage:
             "name": state_dict['name'],
             "version": state_dict['version'],
             "primary_key": primary_key,
-            "include_extra_from_input_definition": include_extra_from_input_definition,
+            "query_state_inheritance": query_state_inheritance,
         }
 
         if 'StateConfig' == state_type:
@@ -680,27 +685,48 @@ class ProcessorStateDatabaseStorage:
             count=state_dict['count']
         )
 
-        # rebuild the column definition
-        # TODO fix this and push the state column definition.model_validate to the upper method
-        columns = self.fetch_state_columns(state_id=state_id)
-        state_instance.columns = {
-            column: StateDataColumnDefinition.model_validate(column_definition)
-            for column, column_definition in columns.items()
-        }
-
-        # rebuild the data values by column and values
-        state_instance.data = {
-            column: self.fetch_state_data_by_column_id(column_definition['id'])
-            for column, column_definition in columns.items()
-        }
-
-        # rebuild the data state mapping
-        state_instance.mapping = self.fetch_state_column_data_mappings(
-            state_id=state_id)
-
         return state_instance
 
-    def save_state_database(self, state: State):
+    def load_state_columns(self, state: State):
+        state_id = self.create_state_id_by_state(state=state)
+
+        # rebuild the column definition
+        state.columns = self.fetch_state_columns(
+            state_id=state_id)
+
+        return state
+
+    def load_state_data(self, state: State):
+
+        # rebuild the data values by column and values
+        state.data = {
+            column: self.fetch_state_data_by_column_id(column_definition['id'])
+            for column, column_definition in state.columns.items()
+        }
+
+        return state
+
+    def load_state_data_mappings(self, state: State):
+        state_id = self.create_state_id_by_state(state=state)
+
+        # rebuild the data state mapping
+        state.mapping = self.fetch_state_column_data_mappings(
+            state_id=state_id)
+
+        return state
+
+    def load_state(self, state_id: str):
+        # basic state instance
+        state = self.load_state_basic(
+            state_id=state_id)
+
+        self.load_state_columns(state=state)
+        self.load_state_data(state=state)
+        self.load_state_data_mappings(state=state)
+
+        return state
+
+    def save_state(self, state: State):
 
         self.insert_state(state=state)
         self.insert_state_config(state=state)
@@ -708,5 +734,4 @@ class ProcessorStateDatabaseStorage:
         self.insert_state_columns_data(state=state)
         self.insert_state_column_data_mapping(state=state)
         self.insert_state_primary_key_definition(state=state)
-        self.insert_state_include_extra_from_input_definition(state=state)
-
+        self.insert_query_state_inheritance_key_definition(state=state)

@@ -42,6 +42,6 @@ def test_state_persistence():
     assert state != None
 
     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-    db_storage.save_state_database(state=state)
+    db_storage.save_state(state=state)
 
 
