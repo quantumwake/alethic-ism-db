@@ -3,8 +3,10 @@ import random
 
 from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition
 
-from alethic_ism_db.db.model import ProcessorState, Processor, Model
-from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage, create_state_id_by_config
+from alethic_ism_db.db.misc_utils import validate_processor_state_from_created, validate_processor_state_from_queued, \
+    validate_processor_state_from_running, validate_processor_state_from_terminated
+from alethic_ism_db.db.model import ProcessorState, Processor, Model, ProcessorStatus
+from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 
@@ -98,9 +100,11 @@ def create_mock_processor_state():
     processor_state = ProcessorState(
         processor_id=processor.id,
         input_state_id=input_state_id,
-        output_state_id=output_state_id
+        output_state_id=output_state_id,
+        status=ProcessorStatus.CREATED
     )
-    storage.insert_processor_state(processor_state=processor_state)
+    storage.update_processor_state(processor_state=processor_state)
+
     return processor_state
 
 
@@ -130,6 +134,7 @@ def test_fetch_models():
     models = db_storage.fetch_models()
     assert len(models) > 0
 
+
 def test_create_model():
     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
 
@@ -157,6 +162,10 @@ def test_create_processor():
     assert processors[0].model_id == processor.model_id
     assert processors[0].type == processor.type
 
+    found_processor = db_storage.fetch_processor(processor_id=processor.id)
+    assert found_processor is not None
+    assert found_processor.id is not None
+
 
 def test_create_processor_state():
     processor_state = create_mock_processor_state()
@@ -173,6 +182,44 @@ def test_create_processor_state():
 
     assert len(processor_states) == 1
 
+    processor_states_by = db_storage.fetch_processor_states_by(processor_state.processor_id)
+    assert isinstance(processor_states_by, ProcessorState)
+
+
+def test_processor_state_transition():
+    new = ProcessorState(
+        processor_id=1,
+        input_state_id="abc",
+        output_state_id="def",
+        status=ProcessorStatus.CREATED
+    )
+
+    new.status = ProcessorStatus.QUEUED
+    validate_processor_state_from_created(new)
+
+    new.status = ProcessorStatus.RUNNING
+    validate_processor_state_from_queued(new)
+
+    new.status = ProcessorStatus.TERMINATED
+    validate_processor_state_from_running(new)
+
+    new.status = ProcessorStatus.STOPPED
+    validate_processor_state_from_terminated(new)
+
+    try:
+        new.status = ProcessorStatus.COMPLETED
+        validate_processor_state_from_terminated(new)
+        assert False
+    except:
+        assert True
+
+    try:
+        new.status = ProcessorStatus.FAILED
+        validate_processor_state_from_terminated(new)
+        assert True
+    except:
+        assert False
+
 
 def test_state_persistence():
     state = create_mock_state()
@@ -181,6 +228,7 @@ def test_state_persistence():
 
     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     db_storage.save_state(state=state)
+
 
 def test_state_config_lm():
 

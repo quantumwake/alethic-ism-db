@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Union
 import logging as log
 
 from core.processor_state import (
@@ -12,24 +12,13 @@ from core.processor_state import (
 )
 from core.utils import general_utils
 
-from .model import Model, Processor, ProcessorState
+from .misc_utils import validate_processor_state_from_queued, validate_processor_state_from_created, \
+    validate_processor_state_from_running, validate_processor_state_from_terminated, \
+    validate_processor_state_from_stopped, validate_processor_state_from_failed, \
+    validate_processor_state_from_completed, create_state_id_by_config
+from .model import Model, Processor, ProcessorState, ProcessorStatus
 
 logging = log.getLogger(__name__)
-
-
-def create_state_id_by_config(config: StateConfig):
-    state_config_type = type(config).__name__
-    hash_key = f'{config.name}:{config.version}:{state_config_type}'
-
-    if isinstance(config, StateConfigLM):
-        provider = config.provider_name
-        model_name = config.model_name
-        user_template = config.user_template_path  # just a name not a path
-        system_template = config.system_template_path  # just a name not a path
-        hash_key = f'{hash_key}:{provider}:{model_name}:{user_template}:{system_template}'
-
-    hash_key = general_utils.calculate_hash(hash_key)
-    return hash_key
 
 
 class ProcessorStateDatabaseStorage:
@@ -92,24 +81,20 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def fetch_processor_states(self):
+    def fetch_processor(self, processor_id) -> Processor:
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
                 sql = f"""
-                    select processor_id, input_state_id, output_state_id from processor_state
+                    select * from processor where id = %s
                 """
 
-                cursor.execute(sql, [])
-                rows = cursor.fetchall()
-                data = [ProcessorState(
-                    processor_id=row[0],
-                    input_state_id=row[1],
-                    output_state_id=row[2]
-                ) for row in rows]
+                cursor.execute(sql, [processor_id])
+                row = cursor.fetchone()
+                result = self.map_row_to_dict(cursor=cursor, row=row)
 
-            return data
+            return Processor(**result)
         except Exception as e:
             logging.error(e)
             raise e
@@ -475,25 +460,136 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def insert_processor_state(self, processor_state: ProcessorState):
+    def fetch_processor_states_by(self, processor_id: int,
+                                  input_state_id: str = None,
+                                  output_state_id: str = None) -> Union[List[ProcessorState], ProcessorState]:
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+
+                values = [processor_id]
+
+                sql = """
+                    select 
+                        processor_id, 
+                        input_state_id,
+                        output_state_id,
+                        status
+                    from processor_state
+                   where processor_id = %s
+                """
+
+                if input_state_id:
+                    values.append(input_state_id)
+                    sql = f"""{sql}
+                    and input_state_id = %s
+                    """
+
+                if output_state_id:
+                    values.append(output_state_id)
+                    sql = f"""{sql}
+                    and output_state_id = %s
+                    """
+
+                cursor.execute(sql, values)
+                rows = cursor.fetchall()
+
+                results = self.map_rows_to_dicts(cursor=cursor, rows=rows)
+                results = [ProcessorState(**row) for row in results]
+
+            if len(results) == 1:
+                return results[0]
+            else:
+                return results
+
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            conn.close()
+
+    def update_processor_state(self, processor_state: ProcessorState):
+
+        if not (processor_state.processor_id and
+                processor_state.input_state_id and
+                processor_state.output_state_id and
+                processor_state.status):
+            raise ValueError(f'processor id, input state id, output state id and status must be set')
+
+        current_state = self.fetch_processor_states_by(
+            processor_id=processor_state.processor_id,
+            input_state_id=processor_state.input_state_id,
+            output_state_id=processor_state.output_state_id)
+
+        #
+        persist = True
+        new_status = processor_state.status
+
+        # if the current status is not set <AND> the new status is not created, raise now allowed exception
+        if not current_state and new_status not in [ProcessorStatus.CREATED]:
+            raise AssertionError(
+                f'invalid first processor status, must be set to CREATED status for initial processor state')
+
+        self._validate_processor_status_change(current_state, persist, processor_state)
+        self._change_processor_state(processor_state=processor_state)
+
+    def _validate_processor_status_change(self, current_state, persist, processor_state):
+        # otherwise if the current state is set then validate the state transition
+        if current_state:
+            # check status
+            cur_status = current_state.status
+
+            # start with an illegal transition state and validate transition states
+            persist = False
+
+            if cur_status in [ProcessorStatus.CREATED]:
+                persist = validate_processor_state_from_created(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.QUEUED]:
+                persist = validate_processor_state_from_queued(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.RUNNING]:
+                persist = validate_processor_state_from_running(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.TERMINATED]:
+                persist = validate_processor_state_from_terminated(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.STOPPED]:
+                persist = validate_processor_state_from_stopped(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.FAILED]:
+                persist = validate_processor_state_from_failed(
+                    processor_state=processor_state)
+            elif cur_status in [ProcessorStatus.COMPLETED]:
+                persist = validate_processor_state_from_completed(
+                    processor_state=processor_state)
+
+        if not persist:
+            error = f'unable to transition from {current_state} to {processor_state}, invalid transition state'
+            logging.error(error)
+            raise PermissionError(error)
+
+    def _change_processor_state(self, processor_state: ProcessorState):
 
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql = """
-                insert into processor_state (
+                INSERT INTO processor_state (
                     processor_id, 
                     input_state_id,
-                    output_state_id) 
-                values (%s, %s, %s) 
+                    output_state_id,
+                    status)
+                VALUES (%s, %s, %s, %s) 
                 ON CONFLICT (processor_id, input_state_id, output_state_id) 
-                DO NOTHING
+                DO UPDATE SET status = EXCLUDED.status
                 """
 
                 cursor.execute(sql, [
                     processor_state.processor_id,
                     processor_state.input_state_id,
-                    processor_state.output_state_id
+                    processor_state.output_state_id,
+                    processor_state.status.value
                 ])
 
             conn.commit()
