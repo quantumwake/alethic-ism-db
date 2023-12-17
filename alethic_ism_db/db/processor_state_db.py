@@ -8,15 +8,13 @@ from core.processor_state import (
     StateConfig,
     StateDataColumnDefinition,
     StateDataRowColumnData,
-    StateDataColumnIndex, InstructionTemplate
+    StateDataColumnIndex, InstructionTemplate, ProcessorStatus
 )
 from core.utils import general_utils
+from core.utils.state_utils import validate_processor_status_change
 
-from .misc_utils import validate_processor_state_from_queued, validate_processor_state_from_created, \
-    validate_processor_state_from_running, validate_processor_state_from_terminated, \
-    validate_processor_state_from_stopped, validate_processor_state_from_failed, \
-    validate_processor_state_from_completed, create_state_id_by_config
-from .model import Model, Processor, ProcessorState, ProcessorStatus
+from .misc_utils import create_state_id_by_config
+from .model import Processor, ProcessorState
 
 logging = log.getLogger(__name__)
 
@@ -252,36 +250,36 @@ class ProcessorStateDatabaseStorage:
 
     # TODO probably should be using async support, with sqlalchemy instead of doing it this way
     #  maybe do this in the future when we get some more time.
-
-    def insert_model(self, model: Model):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-
-                sql = f"""
-                    INSERT INTO model (provider_name, model_name)
-                         VALUES (%s, %s)
-                             ON CONFLICT (provider_name, model_name) 
-                      DO UPDATE SET provider_name = EXCLUDED.provider_name, model_name = EXCLUDED.model_name
-                    RETURNING id
-                """
-
-                # sql = f"""insert into model (provider_name, model_name) values (%s, %s) RETURNING id"""
-                values = [model.provider_name, model.model_name]
-                cursor.execute(sql, values)
-
-                # fetch id value
-                model.id = cursor.fetchone()[0]
-
-            conn.commit()
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            conn.close()
-
-        return model
+    #
+    # def insert_model(self, model: Model):
+    #     conn = self.create_connection()
+    #
+    #     try:
+    #         with conn.cursor() as cursor:
+    #
+    #             sql = f"""
+    #                 INSERT INTO model (provider_name, model_name)
+    #                      VALUES (%s, %s)
+    #                          ON CONFLICT (provider_name, model_name)
+    #                   DO UPDATE SET provider_name = EXCLUDED.provider_name, model_name = EXCLUDED.model_name
+    #                 RETURNING id
+    #             """
+    #
+    #             # sql = f"""insert into model (provider_name, model_name) values (%s, %s) RETURNING id"""
+    #             values = [model.provider_name, model.model_name]
+    #             cursor.execute(sql, values)
+    #
+    #             # fetch id value
+    #             model.id = cursor.fetchone()[0]
+    #
+    #         conn.commit()
+    #     except Exception as e:
+    #         logging.error(e)
+    #         raise e
+    #     finally:
+    #         conn.close()
+    #
+    #     return model
 
     def insert_state(self, state: State):
         conn = self.create_connection()
@@ -377,25 +375,6 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def fetch_models(self):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""select * from model"""
-
-                cursor.execute(sql, [])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                results = [Model(**row) for row in results]
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            conn.close()
-
     def delete_template(self, template_path):
         try:
             conn = self.create_connection()
@@ -460,7 +439,7 @@ class ProcessorStateDatabaseStorage:
         finally:
             conn.close()
 
-    def fetch_processor_states_by(self, processor_id: int,
+    def fetch_processor_states_by(self, processor_id: str,
                                   input_state_id: str = None,
                                   output_state_id: str = None) -> Union[List[ProcessorState], ProcessorState]:
         try:
@@ -526,48 +505,21 @@ class ProcessorStateDatabaseStorage:
         new_status = processor_state.status
 
         # if the current status is not set <AND> the new status is not created, raise now allowed exception
-        if not current_state and new_status not in [ProcessorStatus.CREATED]:
-            raise AssertionError(
-                f'invalid first processor status, must be set to CREATED status for initial processor state')
+        if not current_state:
+            current_status = None
+            if new_status not in [ProcessorStatus.CREATED]:
+                raise AssertionError(
+                    f'invalid first processor status, must be set to CREATED status for initial processor state')
+        else:
+            current_status = current_state.status
 
-        self._validate_processor_status_change(current_state, persist, processor_state)
+        # validate the current status change
+        validate_processor_status_change(
+            current_status=current_status,
+            new_status=processor_state.status)
+
+        # update the current status in the processor state
         self._change_processor_state(processor_state=processor_state)
-
-    def _validate_processor_status_change(self, current_state, persist, processor_state):
-        # otherwise if the current state is set then validate the state transition
-        if current_state:
-            # check status
-            cur_status = current_state.status
-
-            # start with an illegal transition state and validate transition states
-            persist = False
-
-            if cur_status in [ProcessorStatus.CREATED]:
-                persist = validate_processor_state_from_created(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.QUEUED]:
-                persist = validate_processor_state_from_queued(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.RUNNING]:
-                persist = validate_processor_state_from_running(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.TERMINATED]:
-                persist = validate_processor_state_from_terminated(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.STOPPED]:
-                persist = validate_processor_state_from_stopped(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.FAILED]:
-                persist = validate_processor_state_from_failed(
-                    processor_state=processor_state)
-            elif cur_status in [ProcessorStatus.COMPLETED]:
-                persist = validate_processor_state_from_completed(
-                    processor_state=processor_state)
-
-        if not persist:
-            error = f'unable to transition from {current_state} to {processor_state}, invalid transition state'
-            logging.error(error)
-            raise PermissionError(error)
 
     def _change_processor_state(self, processor_state: ProcessorState):
 
@@ -605,23 +557,17 @@ class ProcessorStateDatabaseStorage:
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql = f"""
-                    INSERT INTO processor (name, type, model_id)
-                         VALUES (%s, %s, %s)
-                             ON CONFLICT (name, type, model_id) 
+                    INSERT INTO processor (id, type)
+                         VALUES (%s, %s)
+                             ON CONFLICT (id, type) 
                       DO UPDATE SET 
-                           name = EXCLUDED.name, 
-                           type = EXCLUDED.type, 
-                       model_id = EXCLUDED.model_id
-                    RETURNING id
+                           id = EXCLUDED.id, 
+                           type = EXCLUDED.type
                 """
                 cursor.execute(sql, [
-                    processor.name,
-                    processor.type,
-                    processor.model_id
+                    processor.id,
+                    processor.type
                 ])
-
-                # fetch id value
-                processor.id = cursor.fetchone()[0]
 
             conn.commit()
         except Exception as e:

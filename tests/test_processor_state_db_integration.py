@@ -1,11 +1,11 @@
 import os
 import random
 
-from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition
+from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition, \
+    ProcessorStatus
+from core.utils.state_utils import validate_processor_status_change
 
-from alethic_ism_db.db.misc_utils import validate_processor_state_from_created, validate_processor_state_from_queued, \
-    validate_processor_state_from_running, validate_processor_state_from_terminated
-from alethic_ism_db.db.model import ProcessorState, Processor, Model, ProcessorStatus
+from alethic_ism_db.db.model import ProcessorState, Processor
 from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
@@ -76,13 +76,12 @@ def create_mock_model():
 
 
 def create_mock_processor():
-    model = create_mock_model()
+    # model = create_mock_model()
     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
 
     processor = Processor(
-        name="Test Processor A",
-        type="Language",
-        model_id=model.id
+        id="language/models/llama/13b-instruct",
+        type="Llama2QuestionAnswerProcessor"
     )
 
     processor = db_storage.insert_processor(processor=processor)
@@ -129,24 +128,24 @@ def test_create_template():
     assert len(templates) == 0
 
 
-def test_fetch_models():
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-    models = db_storage.fetch_models()
-    assert len(models) > 0
-
-
-def test_create_model():
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-
-    # create a mock model
-    model = create_mock_model()
-
-    assert model.id is not None
-    models = [m for m in db_storage.fetch_models()
-              if m.model_name == model.model_name
-              and m.provider_name == model.provider_name]
-
-    assert len(models) == 1
+# def test_fetch_models():
+#     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+#     models = db_storage.fetch_models()
+#     assert len(models) > 0
+#
+#
+# def test_create_model():
+#     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+#
+#     # create a mock model
+#     model = create_mock_model()
+#
+#     assert model.id is not None
+#     models = [m for m in db_storage.fetch_models()
+#               if m.model_name == model.model_name
+#               and m.provider_name == model.provider_name]
+#
+#     assert len(models) == 1
 
 
 def test_create_processor():
@@ -158,8 +157,7 @@ def test_create_processor():
     processors = [proc for proc in processors if proc.id == processor.id]
 
     assert len(processors) == 1
-    assert processors[0].name == processor.name
-    assert processors[0].model_id == processor.model_id
+    assert processors[0].id == processor.id
     assert processors[0].type == processor.type
 
     found_processor = db_storage.fetch_processor(processor_id=processor.id)
@@ -187,38 +185,30 @@ def test_create_processor_state():
 
 
 def test_processor_state_transition():
-    new = ProcessorState(
-        processor_id=1,
-        input_state_id="abc",
-        output_state_id="def",
-        status=ProcessorStatus.CREATED
-    )
-
-    new.status = ProcessorStatus.QUEUED
-    validate_processor_state_from_created(new)
-
-    new.status = ProcessorStatus.RUNNING
-    validate_processor_state_from_queued(new)
-
-    new.status = ProcessorStatus.TERMINATED
-    validate_processor_state_from_running(new)
-
-    new.status = ProcessorStatus.STOPPED
-    validate_processor_state_from_terminated(new)
+    validate_processor_status_change(current_status=ProcessorStatus.CREATED, new_status=ProcessorStatus.QUEUED)
+    validate_processor_status_change(current_status=ProcessorStatus.QUEUED, new_status=ProcessorStatus.RUNNING)
+    validate_processor_status_change(current_status=ProcessorStatus.RUNNING, new_status=ProcessorStatus.TERMINATED)
+    validate_processor_status_change(current_status=ProcessorStatus.RUNNING, new_status=ProcessorStatus.COMPLETED)
 
     try:
-        new.status = ProcessorStatus.COMPLETED
-        validate_processor_state_from_terminated(new)
-        assert False
+        validate_processor_status_change(
+            current_status=ProcessorStatus.TERMINATED,
+            new_status=ProcessorStatus.STOPPED
+        )
+
+        assert False is True
     except:
         assert True
 
     try:
-        new.status = ProcessorStatus.FAILED
-        validate_processor_state_from_terminated(new)
+        validate_processor_status_change(
+            current_status=ProcessorStatus.TERMINATED,
+            new_status=ProcessorStatus.FAILED
+        )
+
         assert True
     except:
-        assert False
+        assert False is True
 
 
 def test_state_persistence():
