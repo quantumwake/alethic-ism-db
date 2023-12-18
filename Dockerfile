@@ -18,6 +18,9 @@ WORKDIR /app/repo
 # Force all commands to run in bash
 SHELL ["/bin/bash", "--login", "-c"]
 
+# Add the pytorch channel (required for apple silicon)
+RUN conda config --add channels pytorch
+
 # Initialize the conda environment specific to this build
 RUN conda env create -f environment.yml
 
