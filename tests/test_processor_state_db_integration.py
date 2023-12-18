@@ -106,6 +106,32 @@ def create_mock_processor_state():
 
     return processor_state
 
+def test_create_template_newlines():
+
+    template_content = """{query}
+
+```json
+{
+    "response": "[response text to query, in text format only]",
+    "justification": "[short justification for your response]"
+}
+```"""
+
+    template_dict = {
+        "template_path": "instruction_template_P1_query_response_default_perspective_user_v8",
+        "template_content": template_content,
+        "template_type": "user_template"
+    }
+
+    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+    storage.insert_template(
+        template_path="test/hello_world",
+        template_content=template_content,
+        template_type="test_template")
+
+    fetched_template = storage.fetch_template('test/hello_world')
+
+    print(fetched_template)
 
 def test_create_template():
     storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)

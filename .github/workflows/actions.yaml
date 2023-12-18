@@ -1,0 +1,28 @@
+# actions.yml
+
+name: Docker Build Python Package using Conda (alethic-ism-core module)
+
+on: [push, pull_request]
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Build Package Artifact 
+      id: build-conda-package
+      run: |
+        bash ./docker_build_conda_package.sh
+        bash ./docker_extract_conda_package.sh
+        
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: alethic-ism-core
+        path: ${{ steps.build-conda-package.outputs.file_name }}

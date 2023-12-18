@@ -1,0 +1,16 @@
+name: alethic-ism-db
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - python-dotenv
+  - pyyaml
+  - pydantic
+  - psycopg2
+  - transformers
+  - nltk
+  - torch
+  - name: alethic-ism-core 
+    url: file:///app/conda/env/local_channel
+    type: tar.bz2

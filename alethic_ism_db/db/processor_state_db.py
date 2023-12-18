@@ -1,3 +1,4 @@
+import html
 from typing import List, Any, Union
 import logging as log
 
@@ -68,6 +69,7 @@ class ProcessorStateDatabaseStorage:
                 rows = cursor.fetchall()
                 data = [InstructionTemplate(
                     template_path=row[0],
+                    # template_content=html.unescape(row[1]) if row[1] else None,
                     template_content=row[1],
                     template_type=row[2]
                 ) for row in rows]
@@ -114,6 +116,7 @@ class ProcessorStateDatabaseStorage:
                 data = InstructionTemplate(
                     template_path=row[0],
                     template_content=row[1],
+                    # template_content=html.unescape(row[1]) if row[1] else None,
                     template_type=row[2]
                 )
 
@@ -413,6 +416,8 @@ class ProcessorStateDatabaseStorage:
                                    source.template_content, 
                                    source.template_type)
                       """
+
+                # template_content = html.escape(template_content) if template_content else None
 
                 if instruction_template:
                     values = [
