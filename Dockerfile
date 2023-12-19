@@ -32,14 +32,14 @@ RUN conda install -y conda-build
 # Initialize the conda environment specific to this build
 RUN conda env create -f environment.yml
 
-# Install ISM core directly instead, instead of environment.yml
-RUN conda install /app/conda/env/local_channel/${CONDA_ISM_CORE_PATH}
-
 # Initialize conda in bash config files:
 RUN conda init bash
 
 # Activate the environment, and make sure it's activated:
 RUN echo "conda activate alethic-ism-core" > ~/.bashrc
+
+# Install ISM core directly instead, instead of environment.yml
+RUN conda install /app/conda/env/local_channel/${CONDA_ISM_CORE_PATH}
 
 # Run the build command (adjust as per your repo's requirements)
 RUN bash ./build.sh
