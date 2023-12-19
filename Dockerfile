@@ -33,7 +33,7 @@ RUN conda install -y conda-build
 RUN conda env create -f environment.yml
 
 # Install ISM core directly instead, instead of environment.yml
-RUN conda install "/app/conda/env/local_channel/{CONDA_ISM_CORE_PATH}"
+RUN conda install "/app/conda/env/local_channel/${CONDA_ISM_CORE_PATH}"
 
 # Initialize conda in bash config files:
 RUN conda init bash
