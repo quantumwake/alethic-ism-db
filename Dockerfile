@@ -36,7 +36,7 @@ RUN conda env create -f environment.yml
 RUN conda init bash
 
 # Activate the environment, and make sure it's activated:
-RUN echo "conda activate alethic-ism-core" > ~/.bashrc
+RUN echo "conda activate alethic-ism-db" > ~/.bashrc
 
 # Install ISM core directly instead, instead of environment.yml
 RUN conda install /app/conda/env/local_channel/${CONDA_ISM_CORE_PATH}
