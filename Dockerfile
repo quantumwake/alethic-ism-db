@@ -20,6 +20,9 @@ WORKDIR /app/repo
 # Force all commands to run in bash
 SHELL ["/bin/bash", "--login", "-c"]
 
+# Index the local channel
+RUN conda index /app/conda/env/local_channel
+
 # Add the pytorch channel (required for apple silicon)
 RUN conda config --add channels pytorch
 

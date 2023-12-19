@@ -1,5 +1,6 @@
 name: alethic-ism-db
 channels:
+  - file:///app/conda/env/local_channel
   - pytorch
   - conda-forge
   - defaults
@@ -12,6 +13,4 @@ dependencies:
   - transformers
   - nltk
   - pytorch
-  - name: alethic-ism-core 
-    url: file:///app/conda/env/local_channel
-    type: tar.bz2
+  - alethic-ism-core 
