@@ -20,23 +20,26 @@ WORKDIR /app/repo
 # Force all commands to run in bash
 SHELL ["/bin/bash", "--login", "-c"]
 
-# Index the local channel
-RUN conda index /app/conda/env/local_channel
-
 # Add the pytorch channel (required for apple silicon)
 RUN conda config --add channels pytorch
 
+# Install necessary dependencies for the build process
+RUN conda install -y conda-build
+
+# Index the local channel
+## RUN conda index /app/conda/env/local_channel
+
 # Initialize the conda environment specific to this build
 RUN conda env create -f environment.yml
+
+# Install ISM core directly instead, instead of environment.yml
+RUN conda install "./app/conda/env/local_channel/{CONDA_ISM_CORE_PATH}"
 
 # Initialize conda in bash config files:
 RUN conda init bash
 
 # Activate the environment, and make sure it's activated:
 RUN echo "conda activate alethic-ism-core" > ~/.bashrc
-
-# Install necessary dependencies for the build process
-RUN conda install -y conda-build
 
 # Run the build command (adjust as per your repo's requirements)
 RUN bash ./build.sh
