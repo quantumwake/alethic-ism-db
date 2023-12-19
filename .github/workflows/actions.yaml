@@ -41,6 +41,8 @@ jobs:
         echo "listing files: "
         ls ./
         
+        head artifact.zip
+        
         # Unzip to extract the original tar.bz2 file
         unzip artifact.zip
 
