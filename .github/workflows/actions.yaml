@@ -36,8 +36,11 @@ jobs:
 
         # Set the output
         echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
-        curl -L $ARTIFACT_DOWNLOAD_URL --output $ARTIFACT_NAME
-  
+        curl -L $ARTIFACT_DOWNLOAD_URL --output $ARTIFACT_NAME.zip
+                
+        # Unzip to extract the original tar.bz2 file
+        unzip $ARTIFACT_NAME.zip
+
     - name: Build Package Artifact 
       id: build-conda-package
       run: |
