@@ -36,11 +36,8 @@ jobs:
 
         # Set the output
         echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
-
-    - name: Download Artifact
-      run: |
-        curl -L ${{ steps.get-artifact.outputs.url }} --output ${{ steps.get-artifact.outputs.artifact_name }}
-    
+        curl -L $ARTIFACT_DOWNLOAD_URL --output $ARTIFACT_NAME
+  
     - name: Build Package Artifact 
       id: build-conda-package
       run: |
