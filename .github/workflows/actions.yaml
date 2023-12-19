@@ -39,13 +39,12 @@ jobs:
 
         # Set the output
         echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
-        
         curl -H "$AUTH_HEADER" -L $ARTIFACT_DOWNLOAD_URL -o artifact.zip
         
-        echo "listing files: "
-        ls ./
-        
-        head artifact.zip
+        # debugging purposes
+        # echo "listing files: "
+        # ls ./
+        # head artifact.zip
         
         # Unzip to extract the original tar.bz2 file
         unzip artifact.zip
@@ -59,5 +58,5 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: alethic-ism-core
+        name: ${{ steps.build-conda-package.outputs.file_name }}
         path: ${{ steps.build-conda-package.outputs.file_name }}
