@@ -40,7 +40,7 @@ jobs:
         # Set the output
         echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
         
-        curl -H $AUTH_HEADER -L $ARTIFACT_DOWNLOAD_URL --output artifact.zip
+        curl -H "$AUTH_HEADER" -L $ARTIFACT_DOWNLOAD_URL -o artifact.zip
         
         echo "listing files: "
         ls ./
