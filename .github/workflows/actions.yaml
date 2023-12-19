@@ -34,18 +34,15 @@ jobs:
         echo $ARTIFACT_NAME
         echo $ARTIFACT_DOWNLOAD_URL
 
-        curl -f -L -o artifact.zip ${{ steps.get-artifact.outputs.url }}
-
-        # (Optional) List the contents of the extracted directory
-        ls -l artifact/
+        # Set the output
+        echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
+        curl -L $ARTIFACT_DOWNLOAD_URL --output artifact.zip
         
-        # Check the file type (optional)
-        file artifact.zip
-        stat artifact.zip
-
-        # Unzip to extract the original .tar.bz2 file
-        unzip artifact.zip -d artifact
-
+        echo "listing files: "
+        ls ./
+        
+        # Unzip to extract the original tar.bz2 file
+        unzip artifact.zip
 
     - name: Build Package Artifact 
       id: build-conda-package
