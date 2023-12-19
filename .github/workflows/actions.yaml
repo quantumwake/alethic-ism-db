@@ -18,6 +18,9 @@ jobs:
     - name: Fetch Alethic ISM Core Module Artifact
       id: get-artifact
       run: |
+        
+        AUTH_HEADER="Authorization: token ${{ secrets.ALETHIC_GITHUB_ACTION_PACKAGE_ACCESS_TOKEN }}"
+        
         # Replace with the correct owner and repository
         OWNER="quantumwake"
         REPO="alethic-ism-core"
@@ -36,7 +39,8 @@ jobs:
 
         # Set the output
         echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
-        curl -L $ARTIFACT_DOWNLOAD_URL --output artifact.zip
+        
+        curl -H $AUTH_HEADER -L $ARTIFACT_DOWNLOAD_URL --output artifact.zip
         
         echo "listing files: "
         ls ./
