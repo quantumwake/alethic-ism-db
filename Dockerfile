@@ -23,9 +23,6 @@ SHELL ["/bin/bash", "--login", "-c"]
 # Add the pytorch channel (required for apple silicon)
 RUN conda config --add channels pytorch
 
-# Install necessary dependencies for the build process
-RUN conda install -y conda-build
-
 # Index the local channel
 ## RUN conda index /app/conda/env/local_channel
 
@@ -37,6 +34,9 @@ RUN conda init bash
 
 # Activate the environment, and make sure it's activated:
 RUN echo "conda activate alethic-ism-db" > ~/.bashrc
+
+# Install necessary dependencies for the build process
+RUN conda install -y conda-build
 
 # Install ISM core directly instead, instead of environment.yml
 RUN conda install /app/conda/env/local_channel/${CONDA_ISM_CORE_PATH}
