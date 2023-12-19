@@ -19,5 +19,5 @@ dependencies = [
 #    "asyncpg",
     "transformers",
     "nltk",
-    "torch"
+    "pytorch"
 ]

@@ -5,12 +5,14 @@ FROM continuumio/miniconda3 as base
 # Set the working directory
 WORKDIR /app
 
+ARG CONDA_ISM_CORE_PATH
 ARG GITHUB_REPO_URL
+
 RUN git clone --depth 1 ${GITHUB_REPO_URL} repo
 RUN mkdir -p /app/conda/env/local_channel 
 
 # copy the alethic-ism-core conda package
-COPY alethic-ism-core-0.3.0-py310_50.tar.bz2 /app/conda/env/local_channel 
+COPY ${CONDA_ISM_CORE_PATH} /app/conda/env/local_channel 
 
 # Move to the repository directory
 WORKDIR /app/repo

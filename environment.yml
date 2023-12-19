@@ -11,7 +11,7 @@ dependencies:
   - psycopg2
   - transformers
   - nltk
-  - torch
+  - pytorch
   - name: alethic-ism-core 
     url: file:///app/conda/env/local_channel
     type: tar.bz2
