@@ -14,7 +14,33 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
+      
+    - name: Fetch Alethic ISM Core Module Artifact
+      id: get-artifact
+      run: |
+        # Replace with the correct owner and repository
+        OWNER="quantumwake"
+        REPO="alethic-ism-core"
 
+        # Fetch artifacts list from GitHub API
+        ARTIFACTS_URL="https://api.github.com/repos/$OWNER/$REPO/actions/artifacts"
+        ARTIFACTS_JSON=$(curl -s $ARTIFACTS_URL)
+        echo $ARTIFACT_URL
+        echo $ARTIFACT_JSON
+
+        # Use jq to parse the JSON and find the artifact that matches the pattern
+        ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '.artifacts[] | select(.name | test("alethic-ism-core-.*-.*_.*\\.tar\\.bz2")) | .name')
+        ARTIFACT_DOWNLOAD_URL=$(echo $ARTIFACTS_JSON | jq -r ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url")
+        echo $ARTIFACT_NAME
+        echo $ARTIFACT_DOWNLOAD_URL
+
+        # Set the output
+        echo "::set-output name=url::$ARTIFACT_DOWNLOAD_URL"
+
+    - name: Download Artifact
+      run: |
+        curl -L ${{ steps.get-artifact.outputs.url }} --output ${{ steps.get-artifact.outputs.artifact_name }}
+    
     - name: Build Package Artifact 
       id: build-conda-package
       run: |
