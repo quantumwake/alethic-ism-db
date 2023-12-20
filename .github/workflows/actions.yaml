@@ -42,8 +42,12 @@ jobs:
         echo $ARTIFACT_URL
         echo $ARTIFACT_JSON
 
+
+        
         # Use jq to parse the JSON and find the artifact that matches the pattern
-        ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '.artifacts[] | select(.name | test("alethic-ism-core_*.*.*_*.tar.gz")) | .name')
+        ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '[.artifacts[] | {name: .name, created_at: .created_at}] | sort_by(.created_at) | reverse')
+        #ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '.artifacts[] | select(.name | test("alethic-ism-core_*.*.*_*.tar.gz")) | .name')
+
         ARTIFACT_DOWNLOAD_URL=$(echo $ARTIFACTS_JSON | jq -r ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url")
         echo $ARTIFACT_NAME
         echo $ARTIFACT_DOWNLOAD_URL
