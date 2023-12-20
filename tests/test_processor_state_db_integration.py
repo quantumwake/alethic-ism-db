@@ -3,9 +3,9 @@ import random
 
 from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition, \
     ProcessorStatus
+from core.processor_state_storage import Processor, ProcessorState
 from core.utils.state_utils import validate_processor_status_change
 
-from alethic_ism_db.db.model import ProcessorState, Processor
 from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
@@ -61,18 +61,6 @@ def create_mock_input_state() -> State:
         state.apply_row_data(query_state=query_state)
 
     return state
-
-
-def create_mock_model():
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-
-    model = Model(
-        provider_name="Test Provider A",
-        model_name="Test Model Name A"
-    )
-
-    model = db_storage.insert_model(model=model)
-    return model
 
 
 def create_mock_processor():

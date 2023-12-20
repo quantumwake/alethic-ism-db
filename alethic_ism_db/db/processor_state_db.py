@@ -1,5 +1,5 @@
 import html
-from typing import List, Any, Union
+from typing import List, Any, Union, Dict
 import logging as log
 
 from core.processor_state import (
@@ -1016,42 +1016,31 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
         return state_instance
 
-    def load_state_columns(self, state: State):
-        state_id = self.create_state_id_by_state(state=state)
-
+    def load_state_columns(self, state_id: str):
         # rebuild the column definition
-        state.columns = self.fetch_state_columns(
-            state_id=state_id)
+        return self.fetch_state_columns(state_id=state_id)
 
-        return state
-
-    def load_state_data(self, state: State):
-
+    def load_state_data(self, columns: dict):
         # rebuild the data values by column and values
-        state.data = {
+        return {
             column: self.fetch_state_data_by_column_id(column_definition.id)
-            for column, column_definition in state.columns.items()
+            for column, column_definition in columns.items()
         }
 
-        return state
-
-    def load_state_data_mappings(self, state: State):
-        state_id = self.create_state_id_by_state(state=state)
+    def load_state_data_mappings(self, state_id: str):
 
         # rebuild the data state mapping
-        state.mapping = self.fetch_state_column_data_mappings(
+        return self.fetch_state_column_data_mappings(
             state_id=state_id)
-
-        return state
 
     def load_state(self, state_id: str):
         # basic state instance
-        state = self.load_state_basic(
-            state_id=state_id)
+        state = self.load_state_basic(state_id=state_id)
 
-        self.load_state_columns(state=state)
-        self.load_state_data(state=state)
-        self.load_state_data_mappings(state=state)
+        # load additional details about the state
+        state.columns = self.load_state_columns(state_id=state_id)
+        state.data = self.load_state_data(columns=state.columns)
+        state.mapping = self.load_state_data_mappings(state_id=state_id)
 
         return state
 
