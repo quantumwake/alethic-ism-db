@@ -32,7 +32,7 @@ jobs:
         echo $ARTIFACT_JSON
 
         # Use jq to parse the JSON and find the artifact that matches the pattern
-        ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '.artifacts[] | select(.name | test("alethic-ism-core*.tar.gz")) | .name')
+        ARTIFACT_NAME=$(echo $ARTIFACTS_JSON | jq -r '.artifacts[] | select(.name | test("alethic-ism-core_*.tar.gz")) | .name')
         ARTIFACT_DOWNLOAD_URL=$(echo $ARTIFACTS_JSON | jq -r ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url")
         echo $ARTIFACT_NAME
         echo $ARTIFACT_DOWNLOAD_URL
