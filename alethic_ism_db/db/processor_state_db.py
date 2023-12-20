@@ -11,16 +11,20 @@ from core.processor_state import (
     StateDataRowColumnData,
     StateDataColumnIndex, InstructionTemplate, ProcessorStatus
 )
+from core.processor_state_storage import (
+    ProcessorStateStorage,
+    Processor,
+    ProcessorState
+)
 from core.utils import general_utils
 from core.utils.state_utils import validate_processor_status_change
 
 from .misc_utils import create_state_id_by_config
-from .model import Processor, ProcessorState
 
 logging = log.getLogger(__name__)
 
 
-class ProcessorStateDatabaseStorage:
+class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
     def __init__(self, database_url):
         self.database_url = database_url

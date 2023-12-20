@@ -10,7 +10,18 @@ jobs:
 
     steps:
     - name: Checkout Repository
+      id: code_checkout
       uses: actions/checkout@v2
+
+    - name: Assign Environment Variables for Build & Deployment Process
+      id: setup_variables
+
+      run: |
+        COMMIT_ID=$(echo $GITHUB_SHA | head -c7)
+        TAG="krasaee/alethic-ism-api:$COMMIT_ID"
+        
+        echo "COMMIT_ID=$COMMIT_ID" >> "$GITHUB_ENV" # for local variables
+        echo "TAG=$TAG" >> "$GITHUB_ENV" # for local variables
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1

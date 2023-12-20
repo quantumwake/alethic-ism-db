@@ -30,7 +30,7 @@ Async support is not yet available, need to make some changes and add in sqlalch
 - conda install conda-build
 
 # Local Dependency & Build
-- conda install -c ~/miniconda3/envs/local_channel alethic-ism-core
+- conda install alethic-ism-core -c ~/miniconda3/envs/local_channel
 - bash build.sh
 
 # Test
