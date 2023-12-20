@@ -17,6 +17,11 @@ RUN tar -zxvf $CONDA_LOCAL_CHANNEL_TARGZ -C /
 # Move to the repository directory
 WORKDIR /app/repo
 
+#TESTING -
+COPY ./docker_build_conda_package.sh .
+COPY ./docker_extract_conda_package.sh .
+COPY ./package-conda-channel.sh .
+
 # Force all commands to run in bash
 SHELL ["/bin/bash", "--login", "-c"]
 
@@ -43,7 +48,6 @@ RUN conda install -y conda-build
 RUN bash ./build.sh
 
 # package the local channel such that we can extract into an artifact
-
-RUN chmod +x ./entrypoint-package-channel.sh
-RUN bash ./entrypoint-package-channel.sh
+RUN chmod +x ./package-conda-channel.sh
+RUN bash ./package-conda-channel.sh
 
