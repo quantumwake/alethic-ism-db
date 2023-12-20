@@ -614,7 +614,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
             # if we are loading the template into the database for the first time
             # usually when the storage class is default set to a file instead
-            if 'file' == config.storage_class.lower():
+            if 'storage_class' not in config.__dict__ or 'file' == config.storage_class.lower():
+                config.storage_class = 'database'
                 user_template_path = convert_template(config.user_template_path, "user_template")
                 system_template_path = convert_template(config.system_template_path, "system_template")
             else:
