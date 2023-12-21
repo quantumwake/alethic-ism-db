@@ -35,7 +35,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                             f'please ensure to synchronize save_state(State) '
                             f'otherwise')
 
-        self.last_data_index = 0
+        # self.last_data_index = 0
         self.connection_pool = pool.SimpleConnectionPool(1, 10, database_url)
 
     class SqlStatement:
@@ -757,7 +757,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
         return hash_key
 
-    def insert_state_columns_data(self, state: State):
+    def insert_state_columns_data(self, state: State, incremental: bool = False):
         state_id = self.create_state_id_by_state(state)
         columns = self.fetch_state_columns(state_id)
 
@@ -768,7 +768,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
             return
 
         conn = self.create_connection()
-        last_position_marker = 0
+        last_persisted_position_index = 0
         try:
 
             track_mapping = set()
@@ -795,10 +795,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
                     column_id = header.id
 
-                    if self.incremental:
+                    if incremental:
 
                         data_count = state.data[column].count
-                        for data_index in range(self.last_data_index, data_count):
+                        for data_index in range(state.persisted_position, data_count):
                             column_row_data = state.data[column].values[data_index]
                             values = [
                                 column_id,
@@ -811,9 +811,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                                 track_mapping.add(column_row_data)
 
                         # update the last position
-                        last_position_marker = data_count - 1
+                        last_persisted_position_index = data_count - 1
                     else:
                         track_mapping = None
+
                         for data_index, column_row_data in enumerate(state.data[column].values):
                             values = [
                                 column_id,
@@ -821,10 +822,14 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                                 column_row_data
                             ]
                             cursor.execute(sql, values)
-                            self.last_data_index = data_index
+
+                        # if last_position_marker != 0 and data_index < last_position_marker:
+                        #     raise Exception(f'critical error handling data index position, expected {last_position_marker}>={data_index}')
+
+                            last_persisted_position_index = data_index
 
             conn.commit()
-            self.last_data_index = last_position_marker
+            state.persisted_position = last_persisted_position_index
             return track_mapping
         except Exception as e:
             logging.error(e)
@@ -1091,10 +1096,13 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         else:
             raise NotImplementedError(f'unsupported type {state_type}')
 
+
+        count = state_dict['count']
         # build the state definition
         state_instance = State(
             config=config,
-            count=state_dict['count']
+            count=count,
+            persisted_position=count-1,
         )
 
         return state_instance
@@ -1128,21 +1136,27 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         return state
 
     def save_state(self, state: State):
-        if not self.incremental or self.last_data_index == 0:
+
+        first_time = state.persisted_position <= 0
+
+        # TODO needs revision as columns and structures may change, need a way to check for
+        #  consistency similar to how it is done at the processor apply_column,apply_data functions
+        if not self.incremental or first_time:
             state_id = self.insert_state(state=state)
             self.insert_state_config(state=state)
             self.insert_state_columns(state=state)
-            self.insert_state_columns_data(state=state)
+            self.insert_state_columns_data(state=state, incremental=False)
             self.insert_state_column_data_mapping(state=state)
             self.insert_state_primary_key_definition(state=state)
             self.insert_query_state_inheritance_key_definition(state=state)
             self.insert_remap_query_state_columns_key_definition(state=state)
             self.insert_template_columns_key_definition(state=state)
         else:
+
             state_id = create_state_id_by_config(state.config)
 
             # the incremental function returns the list of state keys that need to be applied
-            primary_key_mapping_update_set = self.insert_state_columns_data(state=state)
+            primary_key_mapping_update_set = self.insert_state_columns_data(state=state, incremental=True)
 
             # insert any new primary key references, provided that it was merged by the previous call
             self.insert_state_column_data_mapping(state=state, state_key_mapping_set=primary_key_mapping_update_set)
