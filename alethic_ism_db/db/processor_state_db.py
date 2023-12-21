@@ -36,7 +36,6 @@ class BaseQuestionAnswerProcessorDatabaseStorage(BaseQuestionAnswerProcessor):
         super().__init__(state=state, processors=processors, **kwargs)
 
         self.manager = ThreadQueueManager(num_workers=10, processor=self)
-        self.save_state_manager = ThreadQueueManager(num_workers=1)
         self.processor_state = processor_state
         self.storage = storage
         logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
@@ -44,29 +43,9 @@ class BaseQuestionAnswerProcessorDatabaseStorage(BaseQuestionAnswerProcessor):
     def pre_state_apply(self, query_state: dict):
         return super().pre_state_apply(query_state=query_state)
 
-
-
     def post_state_apply(self, query_state: dict):
         query_state = super().post_state_apply(query_state=query_state)
         self.storage.save_state(state=self.state)
-
-        #
-        # # setup a function call used to execute the processing of the actual entry
-        # process_func = higher_order_routine(self.storage.save_state,
-        #                                     state=self.state)
-        #
-        # # add the entry to the queue for processing
-        # self.manager.add_to_queue(process_func)
-
-
-
-        # start the thread runner only when all the data has been added to the queue
-    #
-    # self.manager.start()
-    #
-    # # wait on workers until the task is completed
-    # self.manager.wait_for_completion()
-
 
     def load_previous_state(self, force: bool = False):
         # do nothing since this was meant to be for loading previous state
