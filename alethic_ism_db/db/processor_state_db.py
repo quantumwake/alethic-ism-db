@@ -35,7 +35,7 @@ class BaseQuestionAnswerProcessorDatabaseStorage(BaseQuestionAnswerProcessor):
 
         super().__init__(state=state, processors=processors, **kwargs)
 
-        self.manager = ThreadQueueManager(num_workers=10, processor=self)
+        self.manager = ThreadQueueManager(num_workers=1, processor=self)
         self.processor_state = processor_state
         self.storage = storage
         logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
