@@ -45,6 +45,15 @@ def create_mock_input_state() -> State:
             version="Test version 0.0",
             primary_key=[
                 StateDataKeyDefinition(name="animal")
+            ],
+            query_state_inheritance=[
+                StateDataKeyDefinition(name="animal")
+            ],
+            remap_query_state_columns=[         # TODO ??
+                StateDataKeyDefinition(name="animal")
+            ],
+            template_columns=[                  # TODO ??
+                StateDataKeyDefinition(name="animal")
             ]
         )
     )

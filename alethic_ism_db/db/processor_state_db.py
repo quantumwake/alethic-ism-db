@@ -837,6 +837,18 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                                          key_definition_type='query_state_inheritance',
                                          definitions=query_state_inheritance)
 
+    def insert_remap_query_state_columns_key_definition(self, state: State):
+        remap_query_state_columns = state.config.remap_query_state_columns
+        self.insert_state_key_definition(state=state,
+                                         key_definition_type='remap_query_state_columns',
+                                         definitions=remap_query_state_columns)
+
+    def insert_template_columns_key_definition(self, state: State):
+        template_columns = state.config.template_columns
+        self.insert_state_key_definition(state=state,
+                                         key_definition_type='template_columns',
+                                         definitions=template_columns)
+
     def insert_state_key_definition(self,
                                     state: State,
                                     key_definition_type: str,
@@ -986,6 +998,14 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
             state_id=state_id,
             definition_type="query_state_inheritance")
 
+        remap_query_state_columns = self.fetch_state_key_definition(
+            state_id=state_id,
+            definition_type="remap_query_state_columns")
+
+        template_columns = self.fetch_state_key_definition(
+            state_id=state_id,
+            definition_type="template_columns")
+
         # fetch list of attributes associated to this state, if any
         config_attributes = self.fetch_state_config(state_id=state_id)
         general_attributes = {
@@ -993,6 +1013,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
             "version": state_dict['version'],
             "primary_key": primary_key,
             "query_state_inheritance": query_state_inheritance,
+            "remap_query_state_columns": remap_query_state_columns,
+            "template_columns": template_columns,
         }
 
         if 'StateConfig' == state_type:
@@ -1052,4 +1074,6 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         self.insert_state_column_data_mapping(state=state)
         self.insert_state_primary_key_definition(state=state)
         self.insert_query_state_inheritance_key_definition(state=state)
+        self.insert_remap_query_state_columns_key_definition(state=state)
+        self.insert_template_columns_key_definition(state=state)
         return state_id
