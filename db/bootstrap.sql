@@ -54,7 +54,7 @@ create table state_column_data
     data_index bigint not null,
     data_value text
 );
-create index state_column_data__index_idx on state_column_data (data_index);
+
 
 drop table if exists state_column_data_mapping;
 create table state_column_data_mapping (
@@ -124,3 +124,22 @@ select state_id,
 from state_column_data d
  inner join state_column c
     on c.id = d.column_id;
+
+
+create or replace view state_column_state_grouped_view
+as select state_id, name, count(data_index) as cnt
+     from state_column_data_view
+    group by state_id, name
+    order by state_id, name;
+
+
+create index state_column_data_mapping__state_key_idx on state_column_data_mapping (state_key);
+create index state_column_data_mapping__state_id_idx on state_column_data_mapping (state_id);
+create index state_column_data_mapping__data_index_idx on state_column_data_mapping (data_index);
+create index state_column_data__index_idx on state_column_data (data_index);
+create index state_column_data__column_id_idx on state_column_data (column_id);
+create index state_column_data__composite_id_idx on state_column_data (data_index, column_id);
+create index state_config__state_id_idx on state_config (state_id);
+create index state_column_key_definition__state_id_idx on state_column_key_definition (state_id);
+create index state_column__state_id_idx on state_column (state_id);
+

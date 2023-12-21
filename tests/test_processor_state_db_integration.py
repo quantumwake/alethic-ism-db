@@ -6,7 +6,8 @@ from core.processor_state import State, StateConfigLM, InstructionTemplate, Stat
 from core.processor_state_storage import Processor, ProcessorState
 from core.utils.state_utils import validate_processor_status_change
 
-from alethic_ism_db.db.processor_state_db import ProcessorStateDatabaseStorage
+from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage
+
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 
