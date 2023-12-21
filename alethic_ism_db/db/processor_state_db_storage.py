@@ -9,7 +9,7 @@ from core.processor_state import (
     StateConfig,
     StateDataColumnDefinition,
     StateDataRowColumnData,
-    StateDataColumnIndex, InstructionTemplate, ProcessorStatus
+    StateDataColumnIndex, InstructionTemplate, ProcessorStatus, implicit_count_with_force_count
 )
 from core.processor_state_storage import (
     ProcessorStateStorage,
@@ -26,8 +26,16 @@ logging = log.getLogger(__name__)
 
 class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
-    def __init__(self, database_url):
+    def __init__(self, database_url, incremental: bool = False):
         self.database_url = database_url
+        self.incremental = incremental
+
+        if incremental:
+            logging.warning(f'using incremental updates is not thread safe, '
+                            f'please ensure to synchronize save_state(State) '
+                            f'otherwise')
+
+        self.last_data_index = 0
         self.connection_pool = pool.SimpleConnectionPool(1, 10, database_url)
 
     class SqlStatement:
@@ -53,7 +61,6 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
     def release_connection(self, conn):
         self.connection_pool.putconn(conn)
-
 
     # TODO add async support
     # async def create_connection_async(self):
@@ -296,22 +303,30 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
         # get the configuration type for this state
         state_id = create_state_id_by_config(config=state.config)
-        result = self.fetch_state_by_state_id(state_id=state_id)
+        # result = self.fetch_state_by_state_id(state_id=state_id)
 
         try:
             with conn.cursor() as cursor:
-                if not result:
-                    state_type = type(state.config).__name__
-                    hash_key = self.create_state_id_by_state(state=state)
-                    sql = f"""insert into state (id, name, state_type, count, version) values (%s, %s, %s, %s, %s)"""
-                    values = [hash_key,
-                              state.config.name.strip(),
-                              state_type,
-                              state.count,
-                              state.config.version.strip()]
-                    cursor.execute(sql, values)
-                else:
-                    hash_key = result['id']
+
+                sql = """
+                    INSERT INTO state (id, name, state_type, count, version) 
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (id) 
+                    DO UPDATE SET count = EXCLUDED.count
+                """
+
+                # setup data values for state
+                state_type = type(state.config).__name__
+                values = [
+                    state_id,
+                    state.config.name.strip(),
+                    state_type,
+                    state.count,
+                    state.config.version.strip()
+                ]
+
+                cursor.execute(sql, values)
+
             conn.commit()
         except Exception as e:
             logging.error(e)
@@ -319,7 +334,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         finally:
             self.release_connection(conn)
 
-        return hash_key
+        return state_id
 
     def fetch_state_config(self, state_id: str):
 
@@ -753,9 +768,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
             return
 
         conn = self.create_connection()
-
+        last_position_marker = 0
         try:
 
+            track_mapping = set()
             with conn.cursor() as cursor:
 
                 # sql = f"""insert into state_column_data (column_id, data_index, data_value) values (%s, %s, %s)"""
@@ -772,7 +788,6 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                 """
 
                 for column, header in columns.items():
-
                     if column not in state.data:
                         logging.warning(f'no data found for column {column}, '
                                         f'ignorable if column is a constant or function')
@@ -780,15 +795,37 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
                     column_id = header.id
 
-                    for data_index, data_value in enumerate(state.data[column].values):
-                        values = [
-                            column_id,
-                            data_index,
-                            data_value
-                        ]
-                        cursor.execute(sql, values)
+                    if self.incremental:
+
+                        data_count = state.data[column].count
+                        for data_index in range(self.last_data_index, data_count):
+                            column_row_data = state.data[column].values[data_index]
+                            values = [
+                                column_id,
+                                data_index,
+                                column_row_data
+                            ]
+                            cursor.execute(sql, values)
+
+                            if column == 'state_key':
+                                track_mapping.add(column_row_data)
+
+                        # update the last position
+                        last_position_marker = data_count - 1
+                    else:
+                        track_mapping = None
+                        for data_index, column_row_data in enumerate(state.data[column].values):
+                            values = [
+                                column_id,
+                                data_index,
+                                column_row_data
+                            ]
+                            cursor.execute(sql, values)
+                            self.last_data_index = data_index
 
             conn.commit()
+            self.last_data_index = last_position_marker
+            return track_mapping
         except Exception as e:
             logging.error(e)
             raise e
@@ -945,7 +982,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         finally:
             self.release_connection(conn)
 
-    def insert_state_column_data_mapping(self, state: State):
+    def insert_state_column_data_mapping(self, state: State, state_key_mapping_set: set = None):
 
         if not state.mapping:
             logging.warning(f'no state mapping found, cannot derive state key mapping without a '
@@ -969,19 +1006,38 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
 
                 # derive the state id
                 state_id = self.create_state_id_by_state(state)
-                for state_key, state_mapping in state.mapping.items():
-                    if not state_mapping.values:
-                        logging.warning(
-                            f'no values specified for state.mapping state key {state_key} in state_id: {state_id}')
-                        continue
 
-                    for data_index in state_mapping.values:
-                        values = [
-                            state_id,
-                            state_key,
-                            data_index
-                        ]
-                        cursor.execute(sql, values)
+                if state_key_mapping_set:
+                    for state_key in state_key_mapping_set:
+                        if state_key not in state.mapping:
+                            logging.warning(
+                                f'no values specified for state.mapping state key {state_key} in state_id: {state_id}')
+                            continue
+
+                        # state mapping
+                        state_mapping = state.mapping[state_key]
+                        for data_index in state_mapping.values:
+                            values = [
+                                state_id,
+                                state_key,
+                                data_index
+                            ]
+                            cursor.execute(sql, values)
+
+                else:
+                    for state_key, state_mapping in state.mapping.items():
+                        if not state_mapping.values:
+                            logging.warning(
+                                f'no values specified for state.mapping state key {state_key} in state_id: {state_id}')
+                            continue
+
+                        for data_index in state_mapping.values:
+                            values = [
+                                state_id,
+                                state_key,
+                                data_index
+                            ]
+                            cursor.execute(sql, values)
 
             conn.commit()
         except Exception as e:
@@ -1072,13 +1128,27 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         return state
 
     def save_state(self, state: State):
-        state_id = self.insert_state(state=state)
-        self.insert_state_config(state=state)
-        self.insert_state_columns(state=state)
-        self.insert_state_columns_data(state=state)
-        self.insert_state_column_data_mapping(state=state)
-        self.insert_state_primary_key_definition(state=state)
-        self.insert_query_state_inheritance_key_definition(state=state)
-        self.insert_remap_query_state_columns_key_definition(state=state)
-        self.insert_template_columns_key_definition(state=state)
+        if not self.incremental or self.last_data_index == 0:
+            state_id = self.insert_state(state=state)
+            self.insert_state_config(state=state)
+            self.insert_state_columns(state=state)
+            self.insert_state_columns_data(state=state)
+            self.insert_state_column_data_mapping(state=state)
+            self.insert_state_primary_key_definition(state=state)
+            self.insert_query_state_inheritance_key_definition(state=state)
+            self.insert_remap_query_state_columns_key_definition(state=state)
+            self.insert_template_columns_key_definition(state=state)
+        else:
+            state_id = create_state_id_by_config(state.config)
+
+            # the incremental function returns the list of state keys that need to be applied
+            primary_key_mapping_update_set = self.insert_state_columns_data(state=state)
+
+            # insert any new primary key references, provided that it was merged by the previous call
+            self.insert_state_column_data_mapping(state=state, state_key_mapping_set=primary_key_mapping_update_set)
+
+            # only save the state if there were changes made, track by primary key updates from previous calls
+            if primary_key_mapping_update_set:
+                self.insert_state(state=state)
+
         return state_id

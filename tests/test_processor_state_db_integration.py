@@ -39,6 +39,45 @@ def create_mock_state() -> State:
     return state
 
 
+def create_mock_state_for_incremental_save() -> State:
+    state = State(
+        config=StateConfigLM(
+            name="Test Language Model Configuration with Template",
+            version="Test version 0.0.1",
+            model_name="OpenAI",
+            provider_name="gpt4",
+            primary_key=[
+                StateDataKeyDefinition(name="data")
+            ],
+            user_template_path="./test_templates/test_template_P1_user.json",
+            system_template_path="./test_templates/test_template_P1_system.json"
+        )
+    )
+
+    for i in range(0, 10):
+        query_state = {
+            "data": f"my data entry {i}",
+            "index": f'{i}'
+        }
+
+        state.apply_columns(query_state=query_state)
+        state.apply_row_data(query_state=query_state)
+
+    return state
+
+def create_mock_state_for_incremental_save_add_more_rows(state: State):
+    for i in range(10, 20):
+        query_state = {
+            "data": f"my new data entry {i}",
+            "index": f'{i}'
+        }
+
+        state.apply_columns(query_state=query_state)
+        state.apply_row_data(query_state=query_state)
+
+    return state
+
+
 def create_mock_input_state() -> State:
     state = State(
         config=StateConfig(
@@ -103,6 +142,32 @@ def create_mock_processor_state():
     storage.update_processor_state(processor_state=processor_state)
 
     return processor_state
+
+def test_incremental_save_state():
+
+    def check(state1, state2):
+        for row_index in range(state1.count):
+            query0 = state1.get_query_state_from_row_index(index=row_index)
+            query1 = state2.get_query_state_from_row_index(index=row_index)
+
+            compare = {key: value for key, value in query0.items() if key not in query1 or value != query1[key]}
+            assert not compare
+
+    # add initial rows and check state consistency
+    state = create_mock_state_for_incremental_save()
+    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL, incremental=True)
+    state_id = storage.save_state(state)
+    loaded_state = storage.load_state(state_id=state_id)
+    check(state1=state, state2=loaded_state)
+
+    # add more rows and check again
+    state = create_mock_state_for_incremental_save_add_more_rows(state=state)
+    state_id = storage.save_state(state)
+
+    # fetch and check data consistency
+    loaded_state = storage.load_state(state_id=state_id)
+    check(state1=state, state2=loaded_state)
+
 
 def test_create_template_newlines():
 
