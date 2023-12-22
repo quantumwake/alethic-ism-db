@@ -1116,6 +1116,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         return {
             column: self.fetch_state_data_by_column_id(column_definition.id)
             for column, column_definition in columns.items()
+            if not column_definition.value      # only return row data that is not a function or a constant
         }
 
     def load_state_data_mappings(self, state_id: str):
