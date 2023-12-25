@@ -38,3 +38,12 @@ Async support is not yet available, need to make some changes and add in sqlalch
 
 # Test
 - conda install pytest
+
+## Contribution
+We warmly welcome contributions, questions, and feedback. Feel free to reach out if you have any queries or suggestions for the project.
+
+## License
+The Alethic ISM is released under the GNU3 license.
+
+## Acknowledgements
+Alethic Research, Princeton University Center for Human Values, New York University
