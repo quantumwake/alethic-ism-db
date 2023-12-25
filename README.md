@@ -1,8 +1,11 @@
 # Alethic Instruction-Based State Machine (DB)
-The following is code for processing and storing data in a database, it allows for the following functionality.
-- Storage of State Information in a Database (this is a replacement of the highly problematic pickle format and also allows for centralized state management)
-- Storage of State Processing into a Tabular Format in a Database
+The following is a State Storage system, primarily intended to store state information in a database, particularly PostgreSQL.
 
+High-level functionality:
+- Storage of State information in a Database (this is a replacement of the highly problematic pickle format and also allows for centralized state management)
+- Storage of State Processing into a Tabular Format in a Database
+- Base Database State Storage Processor that can be inherited to perform language based instructions.
+- Base classes to create other state storage options (e.g. Redis or external cache)
 
 # Conda Sources
 This is required to ensure that the correct pytorch is installed on Apple Silicon (MPS)
