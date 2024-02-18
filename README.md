@@ -1,5 +1,5 @@
 # Alethic Instruction-Based State Machine (DB)
-The following is a State Storage system, primarily intended to store state information in a database, particularly PostgreSQL.
+The Alethic ISM Database Interface enhances the Alethic ISM project by introducing database storage for state information as a flexible alternative to the traditional file-based system. It is tailored for compatibility with postgres and other database systems (but we can also use a DHT for more flexibility), streamlining the capture of state updates from any one or more ISM processor implementation. This design strengthens the support of a centralized data management but also facilitates distributed environments, where multiple processors can seamlessly access and utilize the same state data, thereby streamlining instruction execution and improving system efficiency and performance.
 
 ## High-level functionality:
 - Storage of State information in a Database (this is a replacement of the highly problematic pickle format and also allows for centralized state management)
@@ -43,7 +43,7 @@ Async support is not yet available, need to make some changes and add in sqlalch
 We warmly welcome contributions, questions, and feedback. Feel free to reach out if you have any queries or suggestions for the project.
 
 ## License
-The Alethic ISM is released under the GNU3 license.
+The Alethic ISM is released under the AGPL/GNU3 license.
 
 ## Acknowledgements
 Alethic Research, Princeton University Center for Human Values, New York University
