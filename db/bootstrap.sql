@@ -97,6 +97,8 @@ create type processor_status AS ENUM (
        'FAILED'
 );
 
+
+
 drop table if exists processor_state;
 create table processor_state (
     processor_id varchar(255) not null references processor (id),
