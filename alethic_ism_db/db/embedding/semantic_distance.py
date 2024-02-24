@@ -22,8 +22,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # 
-# 
-from transformers import AutoTokenizer, AutoModel
+#
+
+# from transformers import AutoTokenizer, AutoModel
 import torch
 import torch.nn.functional as F
 
@@ -110,6 +111,6 @@ class SemanticSearchBase:
 class BasicSemanticSearch(SemanticSearchBase):
     def __init__(self, model_name):
         self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        # self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # self.model = AutoModel.from_pretrained(model_name)
 

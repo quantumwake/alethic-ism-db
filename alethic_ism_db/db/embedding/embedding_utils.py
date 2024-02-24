@@ -34,6 +34,8 @@ embeddings_models = {
 }
 
 def create_embedding(text: str, model_name):
+    return None
+
     if model_name not in embeddings_models:
         raise Exception(f'embedding model {model_name} not found in list of models available: {embeddings_models}')
 
@@ -52,6 +54,7 @@ def create_embedding(text: str, model_name):
 
 
 def calculate_embeddings(text: str):
-    return create_embedding(text=text, model_name='st_minilm_l6_v2')
+    pass
+    #return create_embedding(text=text, model_name='st_minilm_l6_v2')
 
 

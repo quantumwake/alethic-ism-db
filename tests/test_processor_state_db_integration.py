@@ -21,152 +21,29 @@
 # 
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# 
-# 
-import os
-import random
+#
 
-from core.processor_state import State, StateConfigLM, InstructionTemplate, StateConfig, StateDataKeyDefinition, \
+from core.processor_state import (
+    StateConfigLM,
+    InstructionTemplate,
     ProcessorStatus
-from core.processor_state_storage import Processor, ProcessorState
-from core.utils.state_utils import validate_processor_status_change
+)
 
+from core.processor_state_storage import ProcessorState
+from core.utils.state_utils import validate_processor_status_change
 from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage
 
+from tests.mock_data import (
+    DATABASE_URL,
+    db_storage,
+    create_mock_state_for_incremental_save,
+    create_mock_state_for_incremental_save_add_more_rows,
+    create_mock_processor,
+    create_mock_processor_state,
+    create_mock_random_state,
+    create_mock_animal_state
+)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
-
-
-def create_mock_state() -> State:
-    state = State(
-        config=StateConfigLM(
-            name="Test Language Model Configuration with Template",
-            version="Test version 0.0.0",
-            model_name="OpenAI",
-            provider_name="gpt4",
-            user_template_path="./test_templates/test_template_P1_user.json",
-            system_template_path="./test_templates/test_template_P1_system.json"
-        )
-    )
-
-    for i in range(5):
-
-        for j in range(5):
-            query_state = {
-                "state_key": f"hello_world_state_key_{i}",
-                "data": random.randbytes(64),
-                "index": (j+1)*(i+1)
-            }
-
-            state.apply_columns(query_state=query_state)
-            state.apply_row_data(query_state=query_state)
-
-    return state
-
-
-def create_mock_state_for_incremental_save() -> State:
-    state = State(
-        config=StateConfigLM(
-            name="Test Language Model Configuration with Template",
-            version="Test version 0.0.1",
-            model_name="OpenAI",
-            provider_name="gpt4",
-            primary_key=[
-                StateDataKeyDefinition(name="data")
-            ],
-            user_template_path="./test_templates/test_template_P1_user.json",
-            system_template_path="./test_templates/test_template_P1_system.json"
-        )
-    )
-
-    for i in range(0, 10):
-        query_state = {
-            "data": f"my data entry {i}",
-            "index": f'{i}'
-        }
-
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
-
-    return state
-
-def create_mock_state_for_incremental_save_add_more_rows(state: State):
-    for i in range(10, 20):
-        query_state = {
-            "data": f"my new data entry {i}",
-            "index": f'{i}'
-        }
-
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
-
-    return state
-
-
-def create_mock_input_state() -> State:
-    state = State(
-        config=StateConfig(
-            name="Test Me (Animals)",
-            version="Test version 0.0",
-            primary_key=[
-                StateDataKeyDefinition(name="animal")
-            ],
-            query_state_inheritance=[
-                StateDataKeyDefinition(name="animal")
-            ],
-            remap_query_state_columns=[         # TODO ??
-                StateDataKeyDefinition(name="animal")
-            ],
-            template_columns=[                  # TODO ??
-                StateDataKeyDefinition(name="animal")
-            ]
-        )
-    )
-
-    query_states = [
-        {"animal": "cat"},
-        {"animal": "dog"},
-        {"animal": "pig"},
-        {"animal": "cow"}
-    ]
-
-    for query_state in query_states:
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
-
-    return state
-
-
-def create_mock_processor():
-    # model = create_mock_model()
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-
-    processor = Processor(
-        id="language/models/llama/13b-instruct",
-        type="Llama2QuestionAnswerProcessor"
-    )
-
-    processor = db_storage.insert_processor(processor=processor)
-    return processor
-
-def create_mock_processor_state():
-    mock_output_state = create_mock_state()
-    mock_input_state = create_mock_input_state()
-
-    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-    input_state_id = storage.insert_state(state=mock_input_state)
-    output_state_id = storage.insert_state(state=mock_output_state)
-
-    processor = create_mock_processor()
-    processor_state = ProcessorState(
-        processor_id=processor.id,
-        input_state_id=input_state_id,
-        output_state_id=output_state_id,
-        status=ProcessorStatus.CREATED
-    )
-    storage.update_processor_state(processor_state=processor_state)
-
-    return processor_state
 
 def test_incremental_save_state():
 
@@ -180,7 +57,10 @@ def test_incremental_save_state():
 
     # add initial rows and check state consistency
     state = create_mock_state_for_incremental_save()
+
+    # create a new incremental state storage class
     storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL, incremental=True)
+
     state_id = storage.save_state(state)
     loaded_state = storage.load_state(state_id=state_id)
     check(state1=state, state2=loaded_state)
@@ -211,18 +91,16 @@ def test_create_template_newlines():
         "template_type": "user_template"
     }
 
-    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-    storage.insert_template(
+    db_storage.insert_template(
         template_path="test/hello_world",
         template_content=template_content,
         template_type="test_template")
 
-    fetched_template = storage.fetch_template('test/hello_world')
+    fetched_template = db_storage.fetch_template('test/hello_world')
 
     print(fetched_template)
 
 def test_create_template():
-    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
 
     for i in range (10):
         instruction = InstructionTemplate(
@@ -230,15 +108,15 @@ def test_create_template():
             template_content="hello world {i}",
             template_type="user_template"
         )
-        storage.insert_template(instruction_template=instruction)
+        db_storage.insert_template(instruction_template=instruction)
 
-    templates = [ x for x in storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    templates = [ x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
     assert len(templates) == 10
 
     for template in templates:
-        storage.delete_template(template_path=template.template_path)
+        db_storage.delete_template(template_path=template.template_path)
 
-    templates = [ x for x in storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
     assert len(templates) == 0
 
 
@@ -266,7 +144,6 @@ def test_create_processor():
     processor = create_mock_processor()
     assert processor.id is not None
 
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     processors = db_storage.fetch_processors()
     processors = [proc for proc in processors if proc.id == processor.id]
 
@@ -283,7 +160,6 @@ def test_create_processor_state():
     processor_state = create_mock_processor_state()
     assert processor_state.processor_id is not None
 
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     processor_states = db_storage.fetch_processor_states()
     processor_states = [
         procstate for procstate in processor_states
@@ -326,31 +202,25 @@ def test_processor_state_transition():
 
 
 def test_state_persistence():
-    state = create_mock_state()
-
+    state = create_mock_random_state()
     assert state != None
-
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     db_storage.save_state(state=state)
 
 
 def test_state_config_lm():
 
-    lm_new_state = create_mock_state()
+    lm_new_state = create_mock_random_state()
     assert isinstance(lm_new_state.config, StateConfigLM)
 
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     state_id = db_storage.save_state(state=lm_new_state)
-
     lm_load_state = db_storage.load_state(state_id=state_id)
     assert isinstance(lm_load_state.config, StateConfigLM)
 
 
 def test_create_state():
-    state1 = create_mock_state()
-    state2 = create_mock_input_state()
+    state1 = create_mock_random_state()
+    state2 = create_mock_animal_state()
 
-    db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
     state_id_1 = db_storage.save_state(state=state1)
     state_id_2 = db_storage.save_state(state=state2)
 

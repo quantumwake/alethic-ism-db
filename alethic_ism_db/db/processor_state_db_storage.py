@@ -45,11 +45,12 @@ from core.utils import general_utils
 from core.utils.state_utils import validate_processor_status_change
 
 from .misc_utils import create_state_id_by_config
+from .models import UserProject, UserProfile, WorkflowNode, WorkflowEdge
 
 logging = log.getLogger(__name__)
 
 
-class ProcessorStateDatabaseStorage(ProcessorStateStorage):
+class BaseDatabaseAccess():
 
     def __init__(self, database_url, incremental: bool = False):
         self.database_url = database_url
@@ -78,14 +79,200 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         """ Maps a list of rows to a list of dictionaries using column names from the cursor. """
         return [self.map_row_to_dict(cursor, row) for row in rows]
 
-    def create_state_id_by_state(self, state: State):
-        return create_state_id_by_config(config=state.config)
-
     def create_connection(self):
         return self.connection_pool.getconn()
 
     def release_connection(self, conn):
         self.connection_pool.putconn(conn)
+
+    def insert_user_profile(self, user_profile: UserProfile):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = """
+                    INSERT INTO user_profile (user_id) 
+                    VALUES (%s)
+                    ON CONFLICT (user_id) 
+                    DO NOTHING
+                """
+
+                values = [
+                    user_profile.user_id
+                ]
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+        return user_profile
+
+    def insert_user_project(self, user_project: UserProject):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = """
+                    INSERT INTO user_project (project_id, project_name, user_id) 
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (project_id) 
+                    DO UPDATE SET project_name = EXCLUDED.project_name
+                """
+
+                values = [
+                    user_project.project_id,
+                    user_project.project_name,
+                    user_project.user_id
+                ]
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+        return user_project
+
+    def fetch_user_projects(self, user_id: str) -> List[UserProject]:
+
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                select * from user_project where user_id = %s
+                """
+
+                cursor.execute(sql, [user_id])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                # result = [State(**r) for r in results]
+
+            return [UserProject(**s) for s in results]
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_workflow_nodes(self, project_id: str) -> List[WorkflowNode]:
+
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                select * from workflow_node where project_id = %s
+                """
+
+                cursor.execute(sql, [project_id])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                # result = [State(**r) for r in results]
+
+            return [WorkflowNode(**node) for node in results]
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def insert_workflow_node(self, node: WorkflowNode):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = """
+                           INSERT INTO workflow_node (node_id, node_type, node_label, project_id, object_id)
+                           VALUES (%s, %s, %s, %s, %s)
+                           ON CONFLICT (node_id) 
+                           DO UPDATE SET node_label = EXCLUDED.node_label
+                       """
+
+                values = [
+                    node.node_id,
+                    node.node_type,
+                    node.node_label,
+                    node.project_id,
+                    node.object_id      # the actual object id used, based on the type of node this is
+                ]
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+        return node
+
+    def fetch_workflow_edges(self, project_id: str) -> List[WorkflowEdge]:
+
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    select * from workflow_edge 
+                     where source_node_id in (select node_id 
+                                                from workflow_node 
+                                               where project_id = %s) 
+                        or target_node_id in (select node_id
+                                                from workflow_node
+                                               where project_id = %s)
+                """
+
+                cursor.execute(sql, [project_id, project_id])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+
+            return [WorkflowEdge(**edge) for edge in results]
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def insert_workflow_edge(self, edge: WorkflowEdge):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = """
+                           INSERT INTO workflow_edge (source_node_id, target_node_id, edge_label)
+                           VALUES (%s, %s, %s)
+                           ON CONFLICT (source_node_id, target_node_id) 
+                           DO UPDATE SET edge_label = EXCLUDED.edge_label
+                       """
+
+                values = [
+                    edge.source_node_id,
+                    edge.target_node_id,
+                    edge.edge_label
+                ]
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+        return edge
+
+class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
     # TODO add async support
     # async def create_connection_async(self):
@@ -95,6 +282,9 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
     #         "dbname=my_database user=postgres password=password"
     #     )
     #     return connection
+
+    def create_state_id_by_state(self, state: State):
+        return create_state_id_by_config(config=state.config)
 
     def fetch_templates(self):
         conn = self.create_connection()
@@ -114,6 +304,27 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                 ) for row in rows]
 
             return data
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_procesors_by_project(self, project_id: str) -> List[Processor]:
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                           select * from processor where project_id = %s
+                       """
+
+                cursor.execute(sql, [project_id])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor=cursor, rows=rows)
+
+            return [Processor(**p) for p in results]
+
         except Exception as e:
             logging.error(e)
             raise e
@@ -207,6 +418,28 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                     for column, column_definition in results.items()
                 }
             return columns
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_states_by_project(self, project_id: str) -> List[State]:
+
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                select * from state where project_id = %s
+                """
+
+                cursor.execute(sql, [project_id])
+                rows = cursor.fetchall()
+                results = self.map_rows_to_dicts(cursor, rows) if rows else None
+                # result = [State(**r) for r in results]
+
+            return [State(**s) for s in results]
         except Exception as e:
             logging.error(e)
             raise e
@@ -848,8 +1081,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
                             ]
                             cursor.execute(sql, values)
 
-                        # if last_position_marker != 0 and data_index < last_position_marker:
-                        #     raise Exception(f'critical error handling data index position, expected {last_position_marker}>={data_index}')
+                            # if last_position_marker != 0 and data_index < last_position_marker:
+                            #     raise Exception(f'critical error handling data index position, expected {last_position_marker}>={data_index}')
 
                             last_persisted_position_index = data_index
 
@@ -1121,13 +1354,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         else:
             raise NotImplementedError(f'unsupported type {state_type}')
 
-
         count = state_dict['count']
         # build the state definition
         state_instance = State(
             config=config,
             count=count,
-            persisted_position=count-1,
+            persisted_position=count - 1,
         )
 
         return state_instance
@@ -1141,7 +1373,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage):
         return {
             column: self.fetch_state_data_by_column_id(column_definition.id)
             for column, column_definition in columns.items()
-            if not column_definition.value      # only return row data that is not a function or a constant
+            if not column_definition.value  # only return row data that is not a function or a constant
         }
 
     def load_state_data_mappings(self, state_id: str):
