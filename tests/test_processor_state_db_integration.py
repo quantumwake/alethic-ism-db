@@ -22,11 +22,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+import uuid
 
 from core.processor_state import (
     StateConfigLM,
     InstructionTemplate,
-    ProcessorStatus
+    ProcessorStatus, State, StateConfig, StateDataKeyDefinition
 )
 
 from core.processor_state_storage import ProcessorState
@@ -38,11 +39,34 @@ from tests.mock_data import (
     db_storage,
     create_mock_state_for_incremental_save,
     create_mock_state_for_incremental_save_add_more_rows,
-    create_mock_processor,
     create_mock_processor_state,
     create_mock_random_state,
     create_mock_animal_state
 )
+
+
+def test_state_with_id():
+    state = State(
+        id="53c7d78d-c90c-48c7-a397-bd4ae882aeb9",
+        config=StateConfig(
+            name="hello world",
+            version="test version",
+            primary_key=[
+                StateDataKeyDefinition(
+                    name="test_key",
+                    alias="test_alias",
+                    required=True
+                )
+            ]
+        )
+    )
+
+    state_id = db_storage.save_state(state=state)
+    loaded_state = db_storage.load_state(state_id=state_id)
+
+    assert state_id == state.id
+    assert loaded_state.state_type == state.state_type
+    assert loaded_state.state_type == "StateConfig"
 
 
 def test_incremental_save_state():
@@ -77,7 +101,7 @@ def test_incremental_save_state():
 def test_create_template_newlines():
 
     template_content = """{query}
-
+    
 ```json
 {
     "response": "[response text to query, in text format only]",
@@ -85,36 +109,37 @@ def test_create_template_newlines():
 }
 ```"""
 
+    template_id = "b071c1ec-c6b7-4516-86c8-839458a0ed24"
     template_dict = {
-        "template_path": "instruction_template_P1_query_response_default_perspective_user_v8",
+        "template_id": template_id,
+        "template_path": "test/hello_world",
         "template_content": template_content,
-        "template_type": "user_template"
+        "template_type": "user_template",
+        "project_id": None
     }
 
-    db_storage.insert_template(
-        template_path="test/hello_world",
-        template_content=template_content,
-        template_type="test_template")
-
-    fetched_template = db_storage.fetch_template('test/hello_world')
+    template_id = db_storage.insert_template(**template_dict)
+    fetched_template = db_storage.fetch_template(template_id)
+    assert template_id == template_id
 
     print(fetched_template)
 
 def test_create_template():
 
-    for i in range (10):
+    for i in range (9):
         instruction = InstructionTemplate(
+            template_id=f"b071c1ec-c6b7-4516-86c8-839458a0ed2{i}",
             template_path=f"test/template/{i}",
             template_content="hello world {i}",
             template_type="user_template"
         )
         db_storage.insert_template(instruction_template=instruction)
 
-    templates = [ x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
-    assert len(templates) == 10
+    templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    assert len(templates) == 9
 
     for template in templates:
-        db_storage.delete_template(template_path=template.template_path)
+        db_storage.delete_template(template_id=template.template_id)
 
     templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
     assert len(templates) == 0
@@ -141,7 +166,7 @@ def test_create_template():
 
 
 def test_create_processor():
-    processor = create_mock_processor()
+    processor = create_mock_processor_state()
     assert processor.id is not None
 
     processors = db_storage.fetch_processors()
@@ -216,6 +241,40 @@ def test_state_config_lm():
     lm_load_state = db_storage.load_state(state_id=state_id)
     assert isinstance(lm_load_state.config, StateConfigLM)
 
+def test_create_state_json():
+    state_json = {
+        "id": "ba1340a6-d689-434e-b88a-ff4be3d17119",
+        "state_type": "StateConfigLM",
+        "config": {
+            "name": "Test State 1",
+            "version": "default version",
+            "storage_class": "database",
+            "primary_key": [
+                {
+                    "name": "a",
+                    "alias": "",
+                    "required": True
+                },
+                {
+                    "name": "some_value_a",
+                    "alias": "",
+                    "required": True
+                },
+                {
+                    "name": "some_value_f",
+                    "alias": "",
+                    "required": True
+                }
+            ],
+            "query_state_inheritance": None,
+            "remap_query_state_columns": None,
+            "template_columns": None,
+            "user_template_id": "4b0d20f7-d1d6-47ed-a214-93ba38607bac"
+        }
+    }
+
+    state_object = State(**state_json)
+    assert state_object.state_type == type(state_object.config).__name__
 
 def test_create_state():
     state1 = create_mock_random_state()

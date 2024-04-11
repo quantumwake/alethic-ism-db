@@ -1,8 +1,80 @@
+drop table if exists user_profile;
+create table user_profile (
+    user_id varchar(36) not null primary key
+);
+
+insert into user_profile (user_id) values ('a57263b6-8869-406b-91e9-bdfb8dfd6785');
+
+drop table if exists user_project;
+create table user_project (
+  project_id varchar(36) not null primary key,
+  project_name varchar(255) not null,
+  user_id varchar(36) not null references user_profile (user_id),
+);
+
+-- select gen_random_uuid();
+
+drop table if exists workflow_node cascade;
+create table workflow_node (
+    node_id varchar(255) not null primary key,
+    object_id varchar(255) null,    -- the actual object id based on the identifier
+    node_type varchar(255) not null,
+    node_label varchar(255) null,
+    project_id varchar(36) not null references user_project (project_id),
+    position_x int null,
+    position_y int null,
+    width int null,
+    height int null
+);
+
+alter table workflow_node add column position_x int not null default 0;
+alter table workflow_node add column position_y int not null default 0;
+
+delete from workflow_edge where 1=1;
+delete from workflow_node where 1=1;
+
+select * from user_profile;
+
+select * from user_project;
+
+update workflow_node set node_type = 'state' where node_type = 'State';
+update workflow_node set node_type = 'processor_dual_state_merge' where node_type = 'dual_state_merge_processor';
+
+delete from user_project where 1=1;
+select * from user_project;
+select * from workflow_node;
+select * from workflow_edge;
+select * from state;
+
+drop table if exists workflow_edge;
+create table workflow_edge (
+    source_node_id varchar(255) not null references workflow_node (node_id),
+    target_node_id varchar(255) not null references  workflow_node (node_id),
+    source_handle varchar(255) null,
+    target_handle varchar(255) null,
+    animated bool not null default true,
+    edge_label varchar(255) null,
+    primary key (source_node_id, target_node_id)
+);
+
+insert into user_project (project_id, project_name, user_id)
+values ('8c84e186-f69a-4e91-83cd-787d40a91230',
+        'Test Project',
+        'a57263b6-8869-406b-91e9-bdfb8dfd6785');
+
+
+alter table template add template_id varchar(36);
+update template set template_id = gen_random_uuid();
+alter table template alter column template_id varchar(36) not null;
+
+
 drop table if exists template;
 create table template (
-    template_path varchar(255) not null primary key,
+    template_id varchar(36) not null primary key,
+    template_path varchar(255) not null,
     template_content text not null,
-    template_type varchar(255) default 'user_template'
+    template_type varchar(255) default 'user_template',
+    project_id varchar(36) null references user_project (project_id)
 );
 
 drop table if exists state cascade;
@@ -14,6 +86,9 @@ create table state
     count int not null default 0,
     state_type varchar(255) not null default 'StateConfig'
 );
+
+-- alter table processor_state drop column project_id;
+-- alter table state add column project_id varchar(36) null references user_project (project_id);
 
 drop table if exists state_config;
 create table state_config (
@@ -41,7 +116,7 @@ create table state_column (
     data_type varchar(64) default 'str',
     "null" boolean default true,
     min_length int default 0,
-    max_length int default 255,
+    max_length int default x255,
     dimensions int default 384,
     value varchar(255),
     source_column_name varchar(255)
@@ -107,6 +182,8 @@ create table processor_state (
     status processor_status not null default 'CREATED',
     primary key (processor_id, input_state_id, output_state_id)
 );
+
+alter table processor_state add column project_id varchar(36) null references user_project (project_id);
 
 
 ------------------

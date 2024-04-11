@@ -22,7 +22,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # 
-# 
+#
+import uuid
+
 from psycopg2 import pool
 from typing import List, Any, Union, Dict
 import logging as log
@@ -112,6 +114,43 @@ class BaseDatabaseAccess():
 
         return user_profile
 
+    def delete_user_project(self, project_id):
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """DELETE FROM user_project WHERE project_id = %s"""
+                cursor.execute(sql, [project_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_user_project(self, project_id: str):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    select * from user_project where project_id = %s
+                """
+
+                cursor.execute(sql, [project_id])
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+
+                row_dict = self.map_row_to_dict(cursor=cursor, row=row)
+                data = UserProject(**row_dict)
+
+            return data
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
     def insert_user_project(self, user_project: UserProject):
         conn = self.create_connection()
 
@@ -163,7 +202,20 @@ class BaseDatabaseAccess():
         finally:
             self.release_connection(conn)
 
-    def fetch_workflow_nodes(self, project_id: str) -> List[WorkflowNode]:
+    def delete_workflow_node(self, node_id):
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """DELETE FROM workflow_node WHERE node_id = %s"""
+                cursor.execute(sql, [node_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_workflow_nodes(self, project_id: str) -> Union[List[WorkflowNode], None]:
 
         conn = self.create_connection()
 
@@ -175,8 +227,10 @@ class BaseDatabaseAccess():
 
                 cursor.execute(sql, [project_id])
                 rows = cursor.fetchall()
+                if not rows:
+                    return None
+
                 results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                # result = [State(**r) for r in results]
 
             return [WorkflowNode(**node) for node in results]
         except Exception as e:
@@ -192,10 +246,26 @@ class BaseDatabaseAccess():
             with conn.cursor() as cursor:
 
                 sql = """
-                           INSERT INTO workflow_node (node_id, node_type, node_label, project_id, object_id)
-                           VALUES (%s, %s, %s, %s, %s)
+                           INSERT INTO workflow_node (
+                                node_id, 
+                                node_type, 
+                                node_label, 
+                                project_id, 
+                                object_id, 
+                                position_x, 
+                                position_y, 
+                                width, 
+                                height)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                            ON CONFLICT (node_id) 
-                           DO UPDATE SET node_label = EXCLUDED.node_label
+                           DO UPDATE SET 
+                            node_label = EXCLUDED.node_label,
+                            object_id=EXCLUDED.object_id,
+                            node_type=EXCLUDED.node_type,
+                            position_x=EXCLUDED.position_x,
+                            position_y=EXCLUDED.position_y,
+                            width=EXCLUDED.width,
+                            height=EXCLUDED.height
                        """
 
                 values = [
@@ -203,7 +273,11 @@ class BaseDatabaseAccess():
                     node.node_type,
                     node.node_label,
                     node.project_id,
-                    node.object_id      # the actual object id used, based on the type of node this is
+                    node.object_id,  # the actual object id used, based on the type of node this is
+                    node.position_x,
+                    node.position_y,
+                    node.width,
+                    node.height
                 ]
                 cursor.execute(sql, values)
 
@@ -216,7 +290,20 @@ class BaseDatabaseAccess():
 
         return node
 
-    def fetch_workflow_edges(self, project_id: str) -> List[WorkflowEdge]:
+    def delete_workflow_edge(self, source_node_id: str, target_node_id: str):
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """DELETE FROM workflow_edge WHERE source_node_id = %s and target_node_id = %s"""
+                cursor.execute(sql, [source_node_id, target_node_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_workflow_edges(self, project_id: str) -> Union[List[WorkflowEdge], None]:
 
         conn = self.create_connection()
 
@@ -234,6 +321,9 @@ class BaseDatabaseAccess():
 
                 cursor.execute(sql, [project_id, project_id])
                 rows = cursor.fetchall()
+                if not rows:
+                    return None
+
                 results = self.map_rows_to_dicts(cursor, rows) if rows else None
 
             return [WorkflowEdge(**edge) for edge in results]
@@ -250,15 +340,20 @@ class BaseDatabaseAccess():
             with conn.cursor() as cursor:
 
                 sql = """
-                           INSERT INTO workflow_edge (source_node_id, target_node_id, edge_label)
-                           VALUES (%s, %s, %s)
+                           INSERT INTO workflow_edge (source_node_id, target_node_id, source_handle, target_handle, animated, edge_label)
+                           VALUES (%s, %s, %s, %s, %s, %s)
                            ON CONFLICT (source_node_id, target_node_id) 
-                           DO UPDATE SET edge_label = EXCLUDED.edge_label
+                           DO UPDATE SET 
+                            animated = EXCLUDED.animated,
+                            edge_label = EXCLUDED.edge_label
                        """
 
                 values = [
                     edge.source_node_id,
                     edge.target_node_id,
+                    edge.source_handle,
+                    edge.target_handle,
+                    edge.animated,
                     edge.edge_label
                 ]
                 cursor.execute(sql, values)
@@ -272,6 +367,7 @@ class BaseDatabaseAccess():
 
         return edge
 
+
 class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
     # TODO add async support
@@ -284,23 +380,42 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
     #     return connection
 
     def create_state_id_by_state(self, state: State):
-        return create_state_id_by_config(config=state.config)
+        if not state.id:
+            return create_state_id_by_config(config=state.config)
+        else:
+            return state.id
 
-    def fetch_templates(self):
+    def fetch_templates(self, project_id: str = None):
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
+
                 sql = f"""
-                    select template_path, template_content, template_type from template
+                    select 
+                        template_id, 
+                        template_path, 
+                        template_content, 
+                        template_type, 
+                        project_id 
+                      from template
                 """
 
-                cursor.execute(sql, [])
+                if project_id:
+                    sql = f"{sql} where project_id = %s"  # fetch project level templates
+                    cursor.execute(sql, [project_id])
+                else:
+                    sql = f"{sql} where project_id is null"  # only fetch global templates
+                    cursor.execute(sql, [])
+
+                # fetch all data
                 rows = cursor.fetchall()
                 data = [InstructionTemplate(
-                    template_path=row[0],
-                    template_content=row[1],
-                    template_type=row[2]
+                    template_id=row[0],
+                    template_path=row[1],
+                    template_content=row[2],
+                    template_type=row[3],
+                    project_id=row[4]
                 ) for row in rows]
 
             return data
@@ -351,23 +466,24 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_template(self, template_path: str):
+    def fetch_template(self, template_id: str):
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
                 sql = f"""
-                    select template_path, template_content, template_type from template
-                    where template_path = %s
+                    select template_id, template_path, template_content, template_type, project_id from template
+                    where template_id = %s
                 """
 
-                cursor.execute(sql, [template_path])
+                cursor.execute(sql, [template_id])
                 row = cursor.fetchone()
                 data = InstructionTemplate(
-                    template_path=row[0],
-                    template_content=row[1],
-                    # template_content=html.unescape(row[1]) if row[1] else None,
-                    template_type=row[2]
+                    template_id=row[0],
+                    template_path=row[1],
+                    template_content=row[2],
+                    template_type=row[3],
+                    project_id=row[4] if row[4] else None
                 )
 
             return data
@@ -560,8 +676,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         conn = self.create_connection()
 
         # get the configuration type for this state
-        state_id = create_state_id_by_config(config=state.config)
-        # result = self.fetch_state_by_state_id(state_id=state_id)
+        state_id = self.create_state_id_by_state(state=state)
 
         try:
             with conn.cursor() as cursor:
@@ -574,13 +689,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 """
 
                 # setup data values for state
-                state_type = type(state.config).__name__
                 values = [
                     state_id,
                     state.config.name.strip(),
-                    state_type,
+                    state.state_type,
                     state.count,
-                    state.config.version.strip()
+                    state.config.version.strip() if state.config.version else state.config.version
                 ]
 
                 cursor.execute(sql, values)
@@ -658,12 +772,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def delete_template(self, template_path):
+    def delete_template(self, template_id):
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
-                sql = """DELETE FROM template WHERE template_path = %s"""
-                cursor.execute(sql, [template_path])
+                sql = """DELETE FROM template WHERE template_id = %s"""
+                cursor.execute(sql, [template_id])
             conn.commit()
         except Exception as e:
             logging.error(e)
@@ -672,9 +786,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def insert_template(self,
+                        template_id: str = None,
                         template_path: str = None,
                         template_content: str = None,
                         template_type: str = None,
+                        project_id: str = None,
                         instruction_template: InstructionTemplate = None):
 
         try:
@@ -683,38 +799,48 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 sql = """
                           MERGE INTO template AS target
                           USING (SELECT 
+                                   %s AS template_id, 
                                    %s AS template_path, 
                                    %s AS template_content, 
-                                   %s AS template_type) AS source
-                             ON target.template_path = source.template_path 
+                                   %s AS template_type,
+                                   %s AS project_id) AS source
+                             ON target.template_id = source.template_id 
                           WHEN MATCHED THEN 
-                              UPDATE SET template_content = source.template_content
+                              UPDATE SET 
+                                template_path = source.template_path, 
+                                template_content = source.template_content
                           WHEN NOT MATCHED THEN 
-                              INSERT (template_path, template_content, template_type)
+                              INSERT (template_id, template_path, template_content, template_type, project_id)
                               VALUES (
+                                   source.template_id, 
                                    source.template_path, 
                                    source.template_content, 
-                                   source.template_type)
+                                   source.template_type,
+                                   source.project_id
+                              )
                       """
 
-                # template_content = html.escape(template_content) if template_content else None
-
                 if instruction_template:
-                    values = [
-                        instruction_template.template_path,
-                        instruction_template.template_content,
-                        instruction_template.template_type,
-                    ]
-                elif template_path and template_content and template_type:
-                    values = [
-                        template_path,
-                        template_content,
-                        template_type
-                    ]
-                else:
+                    template_id = instruction_template.template_id
+                    template_path = instruction_template.template_path
+                    template_content = instruction_template.template_content
+                    template_type = instruction_template.template_type
+                    project_id = instruction_template.project_id
+
+                elif not (template_id or template_path or template_content or template_type):
                     raise ValueError(f'must specify either the instruction_template or template_path, '
                                      f'template_content and template_type')
 
+                # create a template id if it is not specified
+                template_id = template_id if template_id else str(uuid.uuid4())
+
+                values = [
+                    template_id,
+                    template_path,
+                    template_content,
+                    template_type,
+                    project_id
+                ]
                 cursor.execute(sql, values)
 
             conn.commit()
@@ -723,6 +849,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
+        return template_id
 
     def fetch_processor_states_by(self, processor_id: str,
                                   input_state_id: str = None,
@@ -881,10 +1009,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 if template_path:
                     template = general_utils.load_template(template_config_file=template_path)
                     template_path = template['name']  # change the path to only the name for db storage
-                    self.insert_template(template_path=template_path,
-                                         template_content=template['template_content'],
-                                         template_type=template_type)
-                    return template_path
+                    template_id = self.insert_template(
+                        template_path=template_path,
+                        template_content=template['template_content'],
+                        template_type=template_type)
+                    return template_id
                 else:
                     return None
 
@@ -892,11 +1021,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             # usually when the storage class is default set to a file instead
             if 'storage_class' not in config.__dict__ or 'file' == config.storage_class.lower():
                 config.storage_class = 'database'
-                user_template_path = convert_template(config.user_template_path, "user_template")
-                system_template_path = convert_template(config.system_template_path, "system_template")
+                user_template_id = convert_template(config.user_template_path, "user_template")
+                # user_template_path = convert_template(config.user_template_path, "user_template")
+                system_template_id = convert_template(config.system_template_path, "system_template")
+                # system_template_path = convert_template(config.system_template_path, "system_template")
             else:
-                user_template_path = config.user_template_path
-                system_template_path = config.system_template_path
+                # user_template_path = config.user_template_path
+                user_template_id = config.user_template_id
+                # system_template_path = config.system_template_path
+                system_template_id = config.system_template_id
 
             # additional parameters required for config lm
             attributes.extend([
@@ -909,12 +1042,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     "data": config.model_name
                 },
                 {
-                    "name": "user_template_path",
-                    "data": user_template_path
+                    "name": "user_template_id",
+                    "data": user_template_id
                 },
                 {
-                    "name": "system_template_path",
-                    "data": system_template_path
+                    "name": "system_template_id",
+                    "data": system_template_id
                 }
             ])
 
@@ -1311,6 +1444,9 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
     def load_state_basic(self, state_id: str):
         state_dict = self.fetch_state_by_state_id(state_id=state_id)
+        if not state_dict:
+            return None
+
         state_type = state_dict['state_type']
 
         # rebuild the key definitions
@@ -1357,8 +1493,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         count = state_dict['count']
         # build the state definition
         state_instance = State(
+            **state_dict,
             config=config,
-            count=count,
             persisted_position=count - 1,
         )
 
@@ -1386,6 +1522,9 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         # basic state instance
         state = self.load_state_basic(state_id=state_id)
 
+        if not state:
+            return None
+
         # load additional details about the state
         state.columns = self.load_state_columns(state_id=state_id)
         state.data = self.load_state_data(columns=state.columns)
@@ -1411,7 +1550,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.insert_template_columns_key_definition(state=state)
         else:
 
-            state_id = create_state_id_by_config(state.config)
+            state_id = self.create_state_id_by_state(state)
 
             # the incremental function returns the list of state keys that need to be applied
             primary_key_mapping_update_set = self.insert_state_columns_data(state=state, incremental=True)

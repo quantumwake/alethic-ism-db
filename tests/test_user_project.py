@@ -48,6 +48,17 @@ def create_user_profile() -> UserProfile:
     return db_storage.insert_user_profile(user_profile=user_profile)
 
 
+
+def create_user_project0(user_id: str) -> UserProject:
+    uuid_str = "00000000-0000-0000-0000-00000000000a"
+    user_project = UserProject(
+        project_id = uuid_str,
+        project_name = "Project Test 0",
+        user_id = user_id
+    )
+    return db_storage.insert_user_project(user_project=user_project)
+
+
 def create_user_project1(user_id: str) -> UserProject:
     uuid_str = "63c8c2ac-a021-44db-b8cd-8619a8e1c8fa"
     user_project = UserProject(
@@ -80,19 +91,27 @@ def create_mock_workflow_nodes_animal_and_template(project_id: str, persist: boo
     # animal input state
     animal_state_node = WorkflowNode(
         node_id="100000000-0000-0000-0000-000000000001",
-        node_type="State",
+        node_type="state",
         node_label="Input Test Animal State",
         project_id=project_id,
-        object_id=animal_state_id
+        object_id=animal_state_id,
+        position_x=0,
+        position_y=0,
+        height=123,
+        width=321
     )
 
     # instruction template input state
     template_state_node = WorkflowNode(
         node_id="100000000-0000-0000-0000-000000000002",
-        node_type="State",
+        node_type="state",
         node_label="Input Test Instruction Template State",
         project_id=project_id,
-        object_id=template_state_id
+        object_id=template_state_id,
+        position_x=100,
+        position_y=200,
+        height=123,
+        width=321
     )
 
     # persist the workflow nodes for the states
@@ -108,10 +127,14 @@ def create_mock_workflow_nodes_dual_state_merger_and_state(project_id: str, pers
     dual_state_processor = create_mock_dual_state_processor()
     dual_state_merge_processor_node = WorkflowNode(
         node_id="200000000-0000-0000-0000-000000000000",
-        node_type="DualStateMergeProcessor",
+        node_type="processor_dual_state_merge",
         node_label="Test Dual Merge State Processor (Animal x Instruction Template)",
         project_id=project_id,
-        object_id=dual_state_processor.id
+        object_id=dual_state_processor.id,
+        position_x=300,
+        position_y=150,
+        height=123,
+        width=321
     )
     db_storage.insert_workflow_node(node=dual_state_merge_processor_node)
 
@@ -122,14 +145,64 @@ def create_mock_workflow_nodes_dual_state_merger_and_state(project_id: str, pers
     animal_and_template_state_output_id = db_storage.create_state_id_by_state(animal_and_template_state_output)
     animal_and_template_state_output_node = WorkflowNode(
         node_id="200000000-0000-0000-0000-000000000001",
-        node_type="State",
+        node_type="state",
         node_label="Test Output State (Animal x Instruction Template)",
         project_id=project_id,
-        object_id=animal_and_template_state_output_id
+        object_id=animal_and_template_state_output_id,
+        position_x=500,
+        position_y=150,
+        height=123,
+        width=321
     )
     db_storage.insert_workflow_node(animal_and_template_state_output_node)
 
     return dual_state_merge_processor_node, animal_and_template_state_output_node
+
+
+def create_mock_workflow_two_basic_nodes(project_id: str):
+
+    test_node1 = WorkflowNode(
+        node_id="200000000-aabb-0000-0000-00000000000a",
+        node_type="state",
+        node_label="Test Node 1",
+        project_id=project_id,
+        object_id="<test nothing>",
+        position_x=0,
+        position_y=0,
+        height=123,
+        width=321
+    )
+
+    test_node2 = WorkflowNode(
+        node_id="200000000-aabb-0000-0000-00000000000b",
+        node_type="state",
+        node_label="Test Node 2",
+        project_id=project_id,
+        object_id="<test nothing>",
+        position_x=0,
+        position_y=0,
+        height=123,
+        width=321
+    )
+
+    test_node1 = db_storage.insert_workflow_node(test_node1)
+    test_node2 = db_storage.insert_workflow_node(test_node2)
+
+    return test_node1, test_node2
+
+
+def create_mock_workflow_two_basic_nodes_edges(source_node_id: str, target_node_id: str):
+    test_edge = WorkflowEdge(
+        source_node_id=source_node_id,
+        target_node_id=target_node_id,
+        source_handle="source-1",
+        target_handle="target-1",
+        edge_label="basic two node test edge",
+        animated=False
+    )
+
+    return db_storage.insert_workflow_edge(test_edge)
+
 
 
 def create_mock_workflow_nodes(project_id: str):
@@ -137,7 +210,6 @@ def create_mock_workflow_nodes(project_id: str):
     # create the animal and instruction template state nodes (this includes the actual state object)
     animal_state_node, template_state_node = create_mock_workflow_nodes_animal_and_template(
         project_id=project_id, persist=True)
-
 
     # create the dual state processor node and it's output state node
     dual_state_processor_node, dual_state_processor_output_state_node = create_mock_workflow_nodes_dual_state_merger_and_state(
@@ -214,6 +286,48 @@ def test_user_project_states():
     fetched_edges = db_storage.fetch_workflow_edges(project_id=project.project_id)
     assert len(fetched_edges) == len(edges)
 
+
+def test_user_project_delete():
+    user = create_user_profile()
+    project = create_user_project0(user.user_id)
+    fetched_project = db_storage.fetch_user_project(project_id=project.project_id)
+
+    assert project.project_name == fetched_project.project_name
+    assert project.user_id == fetched_project.user_id
+
+    db_storage.delete_user_project(project_id=fetched_project.project_id)
+
+    fetched_project = db_storage.fetch_user_project(project_id=project.project_id)
+    assert fetched_project is None
+
+
+def test_create_user_project_nodes_and_edges_then_delete():
+    user = create_user_profile()
+    project = create_user_project0(user.user_id)
+
+    source_node, target_node = create_mock_workflow_two_basic_nodes(project_id=project.project_id)
+    edge = create_mock_workflow_two_basic_nodes_edges(source_node.node_id, target_node.node_id)
+
+    fetched_nodes = db_storage.fetch_workflow_nodes(project.project_id)
+    assert len(fetched_nodes) == 2
+    fetched_edges = db_storage.fetch_workflow_edges(project_id=project.project_id)
+    assert len(fetched_edges) == 1
+
+    # delete edge
+    db_storage.delete_workflow_edge(source_node.node_id, target_node.node_id)
+    fetched_edges = db_storage.fetch_workflow_edges(project_id=project.project_id)
+    assert fetched_edges is None
+
+    # delete nodes
+    db_storage.delete_workflow_node(source_node.node_id)
+    db_storage.delete_workflow_node(target_node.node_id)
+    fetched_nodes = db_storage.fetch_workflow_nodes(project_id=project.project_id)
+    assert fetched_nodes is None
+
+    # delete project
+    db_storage.delete_user_project(project_id=project.project_id)
+    fetched_project = db_storage.fetch_user_project(project_id=project.project_id)
+    assert fetched_project is None
 
 
 
