@@ -28,7 +28,7 @@ import logging
 
 from core.base_processor import BaseProcessor, ThreadQueueManager
 from core.base_question_answer_processor import BaseQuestionAnswerProcessor
-from core.processor_state import State, ProcessorStatus
+from core.processor_state import State, StatusCode
 from core.processor_state_storage import ProcessorState, ProcessorStateStorage
 from core.utils.general_utils import higher_order_routine
 
@@ -84,7 +84,7 @@ class BaseQuestionAnswerProcessorDatabaseStorage(BaseQuestionAnswerProcessor):
                 f':{self.provider_name}'
                 f':{self.model_name}')
 
-    def update_current_status(self, new_status: ProcessorStatus):
+    def update_current_status(self, new_status: StatusCode):
         self.processor_state.status = new_status
         self.storage.update_processor_state(self.processor_state)
 

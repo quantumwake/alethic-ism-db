@@ -1,33 +1,7 @@
-# The Alethic Instruction-Based State Machine (ISM) is a versatile framework designed to 
-# efficiently process a broad spectrum of instructions. Initially conceived to prioritize
-# animal welfare, it employs language-based instructions in a graph of interconnected
-# processing and state transitions, to rigorously evaluate and benchmark AI models
-# apropos of their implications for animal well-being. 
-# 
-# This foundation in ethical evaluation sets the stage for the framework's broader applications,
-# including legal, medical, multi-dialogue conversational systems.
-# 
-# Copyright (C) 2023 Kasra Rasaee, Sankalpa Ghose, Yip Fai Tse (Alethic Research) 
-# 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-# 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-# 
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-import uuid
-
 from core.processor_state import (
     StateConfigLM,
     InstructionTemplate,
-    ProcessorStatus, State, StateConfig, StateDataKeyDefinition
+    StatusCode, State, StateConfig, StateDataKeyDefinition
 )
 
 from core.processor_state_storage import ProcessorState
@@ -39,10 +13,64 @@ from tests.mock_data import (
     db_storage,
     create_mock_state_for_incremental_save,
     create_mock_state_for_incremental_save_add_more_rows,
-    create_mock_processor_state,
+    create_mock_processor_state_1,
     create_mock_random_state,
-    create_mock_animal_state
+    create_mock_animal_state,
+    create_mock_processor_provider, create_mock_processor_state_2
 )
+
+
+def test_state_key_definition_update():
+    state_id = "00000000-0000-0000-0000-0000000000fe"
+
+    state = State(
+        id=state_id,
+        config=StateConfig(
+            name="hello world",
+            version="test version",
+            primary_key=[
+                StateDataKeyDefinition(
+                    name="test key",
+                    alias="test alias",
+                    required=False,
+                    callable=False
+                )
+            ]
+        )
+    )
+
+    db_storage.delete_state_cascade(state_id=state_id)
+
+    state = db_storage.save_state(state=state)
+    assert state is not None
+    state_id = state.id
+    assert state.config.primary_key[0].id is not None
+
+    loaded_state_1 = db_storage.load_state(state_id=state_id)
+    assert loaded_state_1.config.primary_key[0].id is not None
+    assert loaded_state_1.config.primary_key[0].name == state.config.primary_key[0].name
+    assert loaded_state_1.config.primary_key[0].alias == state.config.primary_key[0].alias
+    assert loaded_state_1.config.primary_key[0].required == state.config.primary_key[0].required
+    assert loaded_state_1.config.primary_key[0].callable == state.config.primary_key[0].callable
+
+    state.config.primary_key[0].required = True
+    state.config.primary_key[0].callable = True
+    state.config.primary_key[0].name = "test key updated"
+    state.config.primary_key[0].alias = "test alias updated"
+
+    state = db_storage.save_state(state=state)
+    assert state is not None
+    state_id = state.id
+
+    loaded_state_2 = db_storage.load_state(state_id=state_id)
+    assert len(loaded_state_2.config.primary_key) == 1
+    assert loaded_state_2.config.primary_key[0].id is not None
+    assert loaded_state_2.config.primary_key[0].id == state.config.primary_key[0].id
+    assert loaded_state_2.config.primary_key[0].name == state.config.primary_key[0].name
+    assert loaded_state_2.config.primary_key[0].alias == state.config.primary_key[0].alias
+    assert loaded_state_2.config.primary_key[0].required == state.config.primary_key[0].required
+    assert loaded_state_2.config.primary_key[0].callable == state.config.primary_key[0].callable
+
 
 
 def test_state_with_id():
@@ -166,7 +194,7 @@ def test_create_template():
 
 
 def test_create_processor():
-    processor = create_mock_processor_state()
+    processor = create_mock_processor_state_1()
     assert processor.id is not None
 
     processors = db_storage.fetch_processors()
@@ -180,35 +208,52 @@ def test_create_processor():
     assert found_processor is not None
     assert found_processor.id is not None
 
+def test_create_processor_provider():
+    provider = create_mock_processor_provider()
+    providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
+    assert len(providers) == 1
+    assert providers[0].id is not None
+    assert providers[0].name == provider.name
+    assert providers[0].version == provider.version
+    assert providers[0].class_name == provider.class_name
+    assert providers[0].user_id == provider.user_id
+    assert providers[0].project_id == provider.project_id
+
+    db_storage.delete_processor_provider(provider_id=provider.id)
+    providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
+    assert len(providers) == 0
+
 
 def test_create_processor_state():
-    processor_state = create_mock_processor_state()
-    assert processor_state.processor_id is not None
+    processor_state_1 = create_mock_processor_state_1()
+    processor_state_2 = create_mock_processor_state_2()
 
-    processor_states = db_storage.fetch_processor_states()
-    processor_states = [
-        procstate for procstate in processor_states
-        if procstate.processor_id == processor_state.processor_id
-           and procstate.output_state_id == processor_state.output_state_id
-           and procstate.input_state_id == processor_state.input_state_id
-    ]
+    assert processor_state_1.processor_id is not None
+    assert processor_state_2.processor_id is not None
+    assert processor_state_1.processor_id == processor_state_2.processor_id
 
-    assert len(processor_states) == 1
+    # create the state and check whether the fetch works
+    processor_states_list_1 = db_storage.fetch_processor_state(state_id=processor_state_1.state_id)
+    processor_states_list_2 = db_storage.fetch_processor_state(state_id=processor_state_2.state_id)
+    assert len(processor_states_list_1) == 1 and len(processor_states_list_2) == 1
 
-    processor_states_by = db_storage.fetch_processor_states_by(processor_state.processor_id)
-    assert isinstance(processor_states_by, ProcessorState)
+    processor_states = db_storage.fetch_processor_state(processor_id=processor_state_1.processor_id)
+    assert len(processor_states) == 2
+
+    # delete and check whether it was deleted
+
 
 
 def test_processor_state_transition():
-    validate_processor_status_change(current_status=ProcessorStatus.CREATED, new_status=ProcessorStatus.QUEUED)
-    validate_processor_status_change(current_status=ProcessorStatus.QUEUED, new_status=ProcessorStatus.RUNNING)
-    validate_processor_status_change(current_status=ProcessorStatus.RUNNING, new_status=ProcessorStatus.TERMINATED)
-    validate_processor_status_change(current_status=ProcessorStatus.RUNNING, new_status=ProcessorStatus.COMPLETED)
+    validate_processor_status_change(current_status=StatusCode.CREATED, new_status=StatusCode.QUEUED)
+    validate_processor_status_change(current_status=StatusCode.QUEUED, new_status=StatusCode.RUNNING)
+    validate_processor_status_change(current_status=StatusCode.RUNNING, new_status=StatusCode.TERMINATED)
+    validate_processor_status_change(current_status=StatusCode.RUNNING, new_status=StatusCode.COMPLETED)
 
     try:
         validate_processor_status_change(
-            current_status=ProcessorStatus.TERMINATED,
-            new_status=ProcessorStatus.STOPPED
+            current_status=StatusCode.TERMINATED,
+            new_status=StatusCode.STOPPED
         )
 
         assert False is True
@@ -217,8 +262,8 @@ def test_processor_state_transition():
 
     try:
         validate_processor_status_change(
-            current_status=ProcessorStatus.TERMINATED,
-            new_status=ProcessorStatus.FAILED
+            current_status=StatusCode.TERMINATED,
+            new_status=StatusCode.FAILED
         )
 
         assert True
@@ -276,6 +321,41 @@ def test_create_state_json():
     state_object = State(**state_json)
     assert state_object.state_type == type(state_object.config).__name__
 
+def test_create_state_update_state_details():
+    state_json = {
+        "id": "00000000-0000-0000-0000-0000000000ff",
+        "state_type": "StateConfig",
+        "config": {
+            "name": "Test State 1",
+            "version": "default version",
+            "storage_class": "database",
+            "primary_key": [
+                {
+                    "name": "a",
+                    "alias": "",
+                    "required": True
+                }
+            ]
+        }
+    }
+
+    state = State(**state_json)
+    state_id = db_storage.save_state(state)
+    loaded_state = db_storage.load_state(state_id=state_id)
+    assert loaded_state.state_type == state.state_type
+    assert loaded_state.config.name == state.config.name
+    assert loaded_state.config.version == state.config.version
+    assert loaded_state.id == state.id
+
+    loaded_state.config.name = "Test State 2"
+    loaded_state.config.version = "Test State Version 2"
+
+    state_id = db_storage.save_state(loaded_state)
+    loaded_state_again = db_storage.load_state(state_id=state_id)
+    assert loaded_state.config.name == loaded_state_again.config.name
+    assert loaded_state.config.version == loaded_state_again.config.version
+
+
 def test_create_state():
     state1 = create_mock_random_state()
     state2 = create_mock_animal_state()
@@ -284,6 +364,6 @@ def test_create_state():
     state_id_2 = db_storage.save_state(state=state2)
 
     states = db_storage.fetch_states()
-    states = [s for s in states if s['id'] in [state_id_1, state_id_2]]
+    # states = [s for s in states if s['id'] in [state_id_1, state_id_2]]
     assert len(states) == 2
 

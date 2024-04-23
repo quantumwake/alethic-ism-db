@@ -1,32 +1,7 @@
-# The Alethic Instruction-Based State Machine (ISM) is a versatile framework designed to 
-# efficiently process a broad spectrum of instructions. Initially conceived to prioritize
-# animal welfare, it employs language-based instructions in a graph of interconnected
-# processing and state transitions, to rigorously evaluate and benchmark AI models
-# apropos of their implications for animal well-being. 
-# 
-# This foundation in ethical evaluation sets the stage for the framework's broader applications,
-# including legal, medical, multi-dialogue conversational systems.
-# 
-# Copyright (C) 2023 Kasra Rasaee, Sankalpa Ghose, Yip Fai Tse (Alethic Research) 
-# 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-# 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-# 
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# 
-#
 import uuid
 
 from psycopg2 import pool
-from typing import List, Any, Union, Dict
+from typing import List, Any, Union, Dict, Optional, Type, Callable
 import logging as log
 
 from core.processor_state import (
@@ -36,20 +11,25 @@ from core.processor_state import (
     StateConfig,
     StateDataColumnDefinition,
     StateDataRowColumnData,
-    StateDataColumnIndex, InstructionTemplate, ProcessorStatus, implicit_count_with_force_count
+    StateDataColumnIndex, InstructionTemplate, ProcessorStateDirection
 )
 from core.processor_state_storage import (
     ProcessorStateStorage,
     Processor,
-    ProcessorState
+    ProcessorState, ProcessorProvider
 )
 from core.utils import general_utils
 from core.utils.state_utils import validate_processor_status_change
 
-from .misc_utils import create_state_id_by_config
+from .misc_utils import create_state_id_by_config, create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
 from .models import UserProject, UserProfile, WorkflowNode, WorkflowEdge
 
 logging = log.getLogger(__name__)
+
+
+class SQLNull:
+    """Marker class for explicit SQL NULL checks."""
+    pass
 
 
 class BaseDatabaseAccess():
@@ -72,20 +52,88 @@ class BaseDatabaseAccess():
             self.sql = sql
             self.values = values
 
-    def map_row_to_dict(self, cursor, row):
-        """ Maps a single row to a dictionary using column names from the cursor. """
-        columns = [col[0] for col in cursor.description]
-        return dict(zip(columns, row))
-
-    def map_rows_to_dicts(self, cursor, rows):
-        """ Maps a list of rows to a list of dictionaries using column names from the cursor. """
-        return [self.map_row_to_dict(cursor, row) for row in rows]
-
     def create_connection(self):
         return self.connection_pool.getconn()
 
     def release_connection(self, conn):
-        self.connection_pool.putconn(conn)
+        try:
+            self.connection_pool.putconn(conn)
+        except Exception as e:
+            logging.error(f'failed to release connection as a result of {e}')
+
+    def execute_query_one(self, sql: str, conditions: dict, mapper: Callable) -> Optional[Any]:
+        conn = self.create_connection()
+        params = []
+        where_clauses = []
+        for field, value in conditions.items():
+            if value is not None:
+                if value is SQLNull:
+                    where_clauses.append(f"{field} IS NULL")
+                else:
+                    where_clauses.append(f"{field} = %s")
+                    params.append(value)
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                if rows:
+                    if len(rows) > 1:
+                        raise ValueError("Multiple rows returned when expecting a single value.")
+                    return mapper(map_row_to_dict(cursor=cursor, row=rows[0]))
+                else:
+                    return None
+        except Exception as e:
+            logging.error(f"Database query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
+    def execute_query_many(self, sql: str, conditions: dict, mapper: Callable) -> Optional[List[Any]]:
+        conn = self.create_connection()
+        params = []
+        where_clauses = []
+
+        for field, value in conditions.items():
+            if value is not None:
+                if value is SQLNull:
+                    where_clauses.append(f"{field} IS NULL")
+                else:
+                    where_clauses.append(f"{field} = %s")
+                    params.append(value)
+
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                return [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
+        except Exception as e:
+            logging.error(f"Database query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
+    def execute_query_fixed(self, sql: str, params: Optional[List[Any]], mapper: Callable) -> Optional[List[Any]]:
+        conn = self.create_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                if not rows:
+                    return None
+
+                results = [mapper(map_row_to_dict(cursor, row)) for row in rows]
+
+            return results
+        except Exception as e:
+            logging.error(f"Database query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
 
     def insert_user_profile(self, user_profile: UserProfile):
         conn = self.create_connection()
@@ -127,29 +175,14 @@ class BaseDatabaseAccess():
         finally:
             self.release_connection(conn)
 
-    def fetch_user_project(self, project_id: str):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                    select * from user_project where project_id = %s
-                """
-
-                cursor.execute(sql, [project_id])
-                row = cursor.fetchone()
-                if row is None:
-                    return None
-
-                row_dict = self.map_row_to_dict(cursor=cursor, row=row)
-                data = UserProject(**row_dict)
-
-            return data
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+    def fetch_user_project(self, project_id: str) -> Optional[UserProject]:
+        return self.execute_query_one(
+            "select * from user_project",
+            conditions={
+                "project_id": project_id
+            },
+            mapper=lambda row: UserProject(**row)
+        )
 
     def insert_user_project(self, user_project: UserProject):
         conn = self.create_connection()
@@ -181,26 +214,13 @@ class BaseDatabaseAccess():
         return user_project
 
     def fetch_user_projects(self, user_id: str) -> List[UserProject]:
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from user_project where user_id = %s
-                """
-
-                cursor.execute(sql, [user_id])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                # result = [State(**r) for r in results]
-
-            return [UserProject(**s) for s in results]
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+        return self.execute_query_many(
+            "select * from user_project",
+            conditions={
+                "user_id": user_id
+            },
+            mapper=lambda row: UserProject(**row)
+        )
 
     def delete_workflow_node(self, node_id):
         try:
@@ -215,29 +235,14 @@ class BaseDatabaseAccess():
         finally:
             self.release_connection(conn)
 
-    def fetch_workflow_nodes(self, project_id: str) -> Union[List[WorkflowNode], None]:
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from workflow_node where project_id = %s
-                """
-
-                cursor.execute(sql, [project_id])
-                rows = cursor.fetchall()
-                if not rows:
-                    return None
-
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-
-            return [WorkflowNode(**node) for node in results]
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+    def fetch_workflow_nodes(self, project_id: str) -> Optional[List[WorkflowNode]]:
+        return self.execute_query_many(
+            "select * from workflow_node",
+            conditions={
+                "project_id": project_id
+            },
+            mapper=lambda row: WorkflowNode(**row)
+        )
 
     def insert_workflow_node(self, node: WorkflowNode):
         conn = self.create_connection()
@@ -303,35 +308,18 @@ class BaseDatabaseAccess():
         finally:
             self.release_connection(conn)
 
-    def fetch_workflow_edges(self, project_id: str) -> Union[List[WorkflowEdge], None]:
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                    select * from workflow_edge 
-                     where source_node_id in (select node_id 
-                                                from workflow_node 
-                                               where project_id = %s) 
-                        or target_node_id in (select node_id
-                                                from workflow_node
-                                               where project_id = %s)
-                """
-
-                cursor.execute(sql, [project_id, project_id])
-                rows = cursor.fetchall()
-                if not rows:
-                    return None
-
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-
-            return [WorkflowEdge(**edge) for edge in results]
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+    def fetch_workflow_edges(self, project_id: str) -> Optional[List[WorkflowEdge]]:
+        sql = """
+                SELECT * FROM workflow_edge
+                WHERE source_node_id IN (
+                    SELECT node_id FROM workflow_node WHERE project_id = %s
+                )
+                OR target_node_id IN (
+                    SELECT node_id FROM workflow_node WHERE project_id = %s
+                )
+            """
+        params = [project_id, project_id]
+        return self.execute_query_fixed(sql, params, lambda row: WorkflowEdge(**row))
 
     def insert_workflow_edge(self, edge: WorkflowEdge):
         conn = self.create_connection()
@@ -368,409 +356,118 @@ class BaseDatabaseAccess():
         return edge
 
 
+
 class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
-    # TODO add async support
-    # async def create_connection_async(self):
-    #     """Create a connection to the PostgreSQL database."""
-    #
-    #     connection = await connect(
-    #         "dbname=my_database user=postgres password=password"
-    #     )
-    #     return connection
+    def fetch_processor_providers(self, user_id: str = None, project_id: str = None):
+        return self.execute_query_many(
+            sql="SELECT * FROM processor_provider",
+            conditions={
+                'user_id': user_id,
+                'project_id': project_id
+            },
+            mapper=lambda row: ProcessorProvider(**row))
 
-    def create_state_id_by_state(self, state: State):
-        if not state.id:
-            return create_state_id_by_config(config=state.config)
-        else:
-            return state.id
+    def insert_processor_provider(self, provider: ProcessorProvider) -> ProcessorProvider:
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = """
+                          MERGE INTO processor_provider AS target
+                          USING (SELECT 
+                                   %s AS id, 
+                                   %s AS name, 
+                                   %s AS version, 
+                                   %s AS class_name,
+                                   %s AS user_id,
+                                   %s AS project_id) AS source
+                             ON target.id = source.id 
+                          WHEN MATCHED THEN 
+                              UPDATE SET 
+                                name = source.name, 
+                                version = source.version,
+                                class_name = source.class_name
+                          WHEN NOT MATCHED THEN 
+                              INSERT (id, name, version, class_name, user_id, project_id)
+                              VALUES (
+                                   source.id, 
+                                   source.name, 
+                                   source.version, 
+                                   source.class_name,
+                                   source.user_id,
+                                   source.project_id
+                              )
+                      """
+
+                provider.id = provider.id if provider.id else str(uuid.uuid4())
+
+                cursor.execute(sql, [
+                    provider.id,
+                    provider.name,
+                    provider.version,
+                    provider.class_name,
+                    provider.user_id,
+                    provider.project_id
+                ])
+
+                conn.commit()
+                return provider
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_processor_provider(self, provider_id) -> int:
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM processor_provider WHERE id = %s"
+                cursor.execute(sql, [provider_id])
+                count = cursor.rowcount  # Get the number of rows deleted
+                conn.commit()
+                return count  # Return the count of deleted rows
+        except Exception as e:
+            logging.error(e)
+            raise e
+
+        finally:
+            self.release_connection(conn)
+
+    def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
+        return self.execute_query_many(
+            sql="SELECT * FROM processor_state",
+            conditions={
+                'project_id': project_id,
+                'provider_id': provider_id
+            },
+            mapper=lambda row: Processor(**row))
+
+    def fetch_processor(self, processor_id: str) -> Optional[Processor]:
+        return self.execute_query_one(
+            sql="SELECT * FROM processor",
+            conditions={
+                'processor_id': processor_id
+            },
+            mapper=lambda row: Processor(**row))
 
     def fetch_templates(self, project_id: str = None):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-
-                sql = f"""
-                    select 
-                        template_id, 
-                        template_path, 
-                        template_content, 
-                        template_type, 
-                        project_id 
-                      from template
-                """
-
-                if project_id:
-                    sql = f"{sql} where project_id = %s"  # fetch project level templates
-                    cursor.execute(sql, [project_id])
-                else:
-                    sql = f"{sql} where project_id is null"  # only fetch global templates
-                    cursor.execute(sql, [])
-
-                # fetch all data
-                rows = cursor.fetchall()
-                data = [InstructionTemplate(
-                    template_id=row[0],
-                    template_path=row[1],
-                    template_content=row[2],
-                    template_type=row[3],
-                    project_id=row[4]
-                ) for row in rows]
-
-            return data
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_procesors_by_project(self, project_id: str) -> List[Processor]:
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                           select * from processor where project_id = %s
-                       """
-
-                cursor.execute(sql, [project_id])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor=cursor, rows=rows)
-
-            return [Processor(**p) for p in results]
-
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_processor(self, processor_id) -> Processor:
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                    select * from processor where id = %s
-                """
-
-                cursor.execute(sql, [processor_id])
-                row = cursor.fetchone()
-                result = self.map_row_to_dict(cursor=cursor, row=row)
-
-            return Processor(**result)
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_template(self, template_id: str):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                    select template_id, template_path, template_content, template_type, project_id from template
-                    where template_id = %s
-                """
-
-                cursor.execute(sql, [template_id])
-                row = cursor.fetchone()
-                data = InstructionTemplate(
-                    template_id=row[0],
-                    template_path=row[1],
-                    template_content=row[2],
-                    template_type=row[3],
-                    project_id=row[4] if row[4] else None
-                )
-
-            return data
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_state_data_by_column_id(self, column_id: int):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                    select * from state_column_data 
-                    where column_id = %s order by data_index
-                """
-
-                cursor.execute(sql, [column_id])
-                rows = cursor.fetchall()
-                values = [row[2] for row in rows]
-                data = StateDataRowColumnData(
-                    values=values,
-                    count=len(values)
-                )
-
-            return data
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_state_columns(self, state_id: str) -> List[StateDataColumnDefinition]:
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""select * from state_column where state_id = %s"""
-                cursor.execute(sql, [state_id])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows)
-                results = {row['name']: row for row in results if row['name']}
-
-                columns = {
-                    column: StateDataColumnDefinition.model_validate(column_definition)
-                    for column, column_definition in results.items()
-                }
-            return columns
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_states_by_project(self, project_id: str) -> List[State]:
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from state where project_id = %s
-                """
-
-                cursor.execute(sql, [project_id])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                # result = [State(**r) for r in results]
-
-            return [State(**s) for s in results]
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_states(self):
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from state
-                """
-
-                cursor.execute(sql, [])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                # result = [State(**r) for r in results]
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_state_by_state_id(self, state_id: str):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""select * from state where id = %s"""
-                cursor.execute(sql, [state_id])
-                row = cursor.fetchone()
-                result = self.map_row_to_dict(cursor, row) if row else None
-            return result
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_state_by_name_version(self, name: str, version: str, state_type: str):
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from state 
-                 where lower(name) = lower(%s) 
-                   and lower(version) = lower(%s) 
-                   and lower(state_type) = lower(%s)
-                """
-
-                # # set the version to blank if not available
-                # if not version:
-                #     version = "Version 0.0"
-
-                values = [
-                    name.strip(),
-                    version.strip(),
-                    state_type.strip()
-                ]
-
-                cursor.execute(sql, values)
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    #
-    # async def insert_state_async(self, state: State):
-    #     conn = await self.create_connection_async()
-    #     await self._insert_state(conn, state=state)
-
-    # TODO probably should be using async support, with sqlalchemy instead of doing it this way
-    #  maybe do this in the future when we get some more time.
-    #
-    # def insert_model(self, model: Model):
-    #     conn = self.create_connection()
-    #
-    #     try:
-    #         with conn.cursor() as cursor:
-    #
-    #             sql = f"""
-    #                 INSERT INTO model (provider_name, model_name)
-    #                      VALUES (%s, %s)
-    #                          ON CONFLICT (provider_name, model_name)
-    #                   DO UPDATE SET provider_name = EXCLUDED.provider_name, model_name = EXCLUDED.model_name
-    #                 RETURNING id
-    #             """
-    #
-    #             # sql = f"""insert into model (provider_name, model_name) values (%s, %s) RETURNING id"""
-    #             values = [model.provider_name, model.model_name]
-    #             cursor.execute(sql, values)
-    #
-    #             # fetch id value
-    #             model.id = cursor.fetchone()[0]
-    #
-    #         conn.commit()
-    #     except Exception as e:
-    #         logging.error(e)
-    #         raise e
-    #     finally:
-    #         self.release_connection(conn)
-    #
-    #     return model
-
-    def insert_state(self, state: State):
-        conn = self.create_connection()
-
-        # get the configuration type for this state
-        state_id = self.create_state_id_by_state(state=state)
-
-        try:
-            with conn.cursor() as cursor:
-
-                sql = """
-                    INSERT INTO state (id, name, state_type, count, version) 
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (id) 
-                    DO UPDATE SET count = EXCLUDED.count
-                """
-
-                # setup data values for state
-                values = [
-                    state_id,
-                    state.config.name.strip(),
-                    state.state_type,
-                    state.count,
-                    state.config.version.strip() if state.config.version else state.config.version
-                ]
-
-                cursor.execute(sql, values)
-
-            conn.commit()
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-        return state_id
-
-    def fetch_state_config(self, state_id: str):
-
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""
-                select * from state_config where state_id = %s 
-                """
-                cursor.execute(sql, [state_id])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else {}
-
-                if results:
-                    results = {
-                        attribute['attribute']: attribute['data']
-                        for attribute in results
-                    }
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_processors(self):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""select * from processor"""
-
-                cursor.execute(sql, [])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                results = [Processor(**row) for row in results]
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def fetch_processor_states(self):
-        conn = self.create_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                sql = f"""select * from processor_state"""
-
-                cursor.execute(sql, [])
-                rows = cursor.fetchall()
-                results = self.map_rows_to_dicts(cursor, rows) if rows else None
-                results = [ProcessorState(**row) for row in results]
-
-            return results
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+        return self.execute_query_many(
+            sql="SELECT * FROM template",
+            conditions={
+                'project_id': project_id
+            },
+            mapper=lambda row: InstructionTemplate(**row))
+
+    def fetch_template(self, template_id: str) -> InstructionTemplate:
+        return self.execute_query_one(
+            sql="SELECT * FROM template",
+            conditions={
+                'template_id': template_id
+            },
+            mapper=lambda row: InstructionTemplate(**row))
 
     def delete_template(self, template_id):
         try:
@@ -827,7 +524,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     template_type = instruction_template.template_type
                     project_id = instruction_template.project_id
 
-                elif not (template_id or template_path or template_content or template_type):
+                elif not (template_path or template_content or template_type):
                     raise ValueError(f'must specify either the instruction_template or template_path, '
                                      f'template_content and template_type')
 
@@ -852,112 +549,190 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         return template_id
 
-    def fetch_processor_states_by(self, processor_id: str,
-                                  input_state_id: str = None,
-                                  output_state_id: str = None) -> Union[List[ProcessorState], ProcessorState]:
+    def fetch_state_data_by_column_id(self, column_id: int):
+        conn = self.create_connection()
+
         try:
-            conn = self.create_connection()
             with conn.cursor() as cursor:
-
-                values = [processor_id]
-
-                sql = """
-                    select 
-                        processor_id, 
-                        input_state_id,
-                        output_state_id,
-                        status
-                    from processor_state
-                   where processor_id = %s
+                sql = f"""
+                    select * from state_column_data 
+                    where column_id = %s order by data_index
                 """
 
-                if input_state_id:
-                    values.append(input_state_id)
-                    sql = f"""{sql}
-                    and input_state_id = %s
-                    """
-
-                if output_state_id:
-                    values.append(output_state_id)
-                    sql = f"""{sql}
-                    and output_state_id = %s
-                    """
-
-                cursor.execute(sql, values)
+                cursor.execute(sql, [column_id])
                 rows = cursor.fetchall()
+                values = [row[2] for row in rows]
+                data = StateDataRowColumnData(
+                    values=values,
+                    count=len(values)
+                )
 
-                results = self.map_rows_to_dicts(cursor=cursor, rows=rows)
-                results = [ProcessorState(**row) for row in results]
-
-            if len(results) == 1:
-                return results[0]
-            else:
-                return results
-
+            return data
         except Exception as e:
             logging.error(e)
             raise e
         finally:
             self.release_connection(conn)
 
-    def update_processor_state(self, processor_state: ProcessorState):
+    def fetch_state_columns(self, state_id: str) -> Optional[List[StateDataColumnDefinition]]:
+        conn = self.create_connection()
 
-        if not (processor_state.processor_id and
-                processor_state.input_state_id and
-                processor_state.output_state_id and
-                processor_state.status):
-            raise ValueError(f'processor id, input state id, output state id and status must be set')
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""select * from state_column where state_id = %s"""
+                cursor.execute(sql, [state_id])
+                rows = cursor.fetchall()
+                results = map_rows_to_dicts(cursor, rows)
+                results = {row['name']: row for row in results if row['name']}
 
-        current_state = self.fetch_processor_states_by(
-            processor_id=processor_state.processor_id,
-            input_state_id=processor_state.input_state_id,
-            output_state_id=processor_state.output_state_id)
+                columns = {
+                    column: StateDataColumnDefinition.model_validate(column_definition)
+                    for column, column_definition in results.items()
+                }
+            return columns
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
 
-        #
-        persist = True
-        new_status = processor_state.status
+    def fetch_states(self,
+                     project_id: str = None,
+                     name: str = None,
+                     version: str = None,
+                     state_type: str = None):
 
-        # if the current status is not set <AND> the new status is not created, raise now allowed exception
-        if not current_state:
-            current_status = None
-            if new_status not in [ProcessorStatus.CREATED]:
-                raise AssertionError(
-                    f'invalid first processor status, must be set to CREATED status for initial processor state')
+        return self.execute_query_many(
+            sql="SELECT * FROM state",
+            conditions={
+                'project_id': project_id,
+                'name': name,
+                'version': version,
+                'state_type': state_type
+            },
+            mapper=lambda row: State(**row))
+
+    def fetch_state(self, state_id: str):
+        return self.execute_query_one(
+            sql="SELECT * FROM state",
+            conditions={
+                'state_id': state_id
+            },
+            mapper=lambda row: State(**row))
+
+
+    def insert_state(self, state: State, config_uuid=False):
+        conn = self.create_connection()
+
+        # get the configuration type for this state based on the configuration setup
+        if config_uuid:
+            state.id = create_state_id_by_state(state=state)
         else:
-            current_status = current_state.status
+            state.id = state.id if state.id else str(uuid.uuid4())
 
-        # validate the current status change
-        validate_processor_status_change(
-            current_status=current_status,
-            new_status=processor_state.status)
+        try:
+            with conn.cursor() as cursor:
 
-        # update the current status in the processor state
-        self._change_processor_state(processor_state=processor_state)
+                sql = """
+                    INSERT INTO state (id, project_id, name, state_type, count, version) 
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) 
+                    DO UPDATE SET 
+                        name = EXCLUDED.name,
+                        version = EXCLUDED.version, 
+                        state_type = EXCLUDED.state_type,
+                        count = EXCLUDED.count
+                """
 
-    def _change_processor_state(self, processor_state: ProcessorState):
+                # setup data values for state
+                values = [
+                    state.id,
+                    state.project_id,
+                    state.config.name.strip(),
+                    state.state_type,
+                    state.count,
+                    state.config.version.strip() if state.config.version else state.config.version
+                ]
+
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+        return state
+
+    def fetch_state_config(self, state_id: str):
+
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                sql = f"""
+                select * from state_config where state_id = %s 
+                """
+                cursor.execute(sql, [state_id])
+                rows = cursor.fetchall()
+                results = map_rows_to_dicts(cursor, rows) if rows else {}
+
+                if results:
+                    results = {
+                        attribute['attribute']: attribute['data']
+                        for attribute in results
+                    }
+
+            return results
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_processor_state(self,
+                              processor_id: str = None,
+                              state_id: str = None,
+                              direction: ProcessorStateDirection = None) -> Optional[List[ProcessorState]]:
+
+        return self.execute_query_many(
+            sql="SELECT * FROM processor_state",
+            conditions={
+                'processor_id': processor_id,
+                'state_id': state_id,
+                'direction': direction.value if direction else None
+            },
+            mapper=lambda row: ProcessorState(**row))
+
+    def insert_processor_state(self, processor_state: ProcessorState) -> ProcessorState:
 
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql = """
-                INSERT INTO processor_state (
-                    processor_id, 
-                    input_state_id,
-                    output_state_id,
-                    status)
-                VALUES (%s, %s, %s, %s) 
-                ON CONFLICT (processor_id, input_state_id, output_state_id) 
-                DO UPDATE SET status = EXCLUDED.status
+                    INSERT INTO processor_state (
+                        id,
+                        processor_id,
+                        state_id,
+                        direction
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (id)
+                    DO NOTHING
                 """
 
+                processor_state.id = processor_state.id if processor_state.id else str(uuid.uuid4())
+
                 cursor.execute(sql, [
+                    processor_state.id,
                     processor_state.processor_id,
-                    processor_state.input_state_id,
-                    processor_state.output_state_id,
-                    processor_state.status.value
+                    processor_state.state_id,
+                    processor_state.direction.value
                 ])
 
             conn.commit()
+            return processor_state
         except Exception as e:
             logging.error(e)
             raise e
@@ -970,26 +745,29 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql = f"""
-                    INSERT INTO processor (id, type)
-                         VALUES (%s, %s)
-                             ON CONFLICT (id, type) 
+                    INSERT INTO processor (id, provider_id, project_id, processor_status)
+                         VALUES (%s, %s, %s, %s)
+                             ON CONFLICT (id) 
                       DO UPDATE SET 
-                           id = EXCLUDED.id, 
-                           type = EXCLUDED.type
+                           processor_status = EXCLUDED.processor_status
                 """
+
+                processor.id = processor.id if processor.id else str(uuid.uuid4())
+
                 cursor.execute(sql, [
                     processor.id,
-                    processor.type
+                    processor.provider_id,
+                    processor.project_id,
+                    processor.processor_status.value
                 ])
 
-            conn.commit()
+                conn.commit()
+            return processor
         except Exception as e:
             logging.error(e)
             raise e
         finally:
             self.release_connection(conn)
-
-        return processor
 
     def insert_state_config(self, state: State):
 
@@ -1052,7 +830,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             ])
 
         # create a new state
-        state_id = self.create_state_id_by_state(state=state)
+        state_id = create_state_id_by_state(state=state)
 
         if not attributes:
             logging.info(f'no additional attributes specified for '
@@ -1100,7 +878,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def insert_state_columns(self, state: State):
-        state_id = self.create_state_id_by_state(state)
+        state_id = create_state_id_by_state(state)
         existing_columns = self.fetch_state_columns(state_id=state_id)
 
         create_columns = {column: header
@@ -1114,7 +892,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         try:
             with conn.cursor() as cursor:
-                hash_key = self.create_state_id_by_state(state=state)
+                hash_key = create_state_id_by_state(state=state)
 
                 sql = f"""
                 insert into state_column (
@@ -1149,7 +927,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         return hash_key
 
     def insert_state_columns_data(self, state: State, incremental: bool = False):
-        state_id = self.create_state_id_by_state(state)
+        state_id = create_state_id_by_state(state)
         columns = self.fetch_state_columns(state_id)
 
         if not columns:
@@ -1235,10 +1013,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             with conn.cursor() as cursor:
                 sql = f"""
                     select 
+                        id,
                         state_id, 
                         name, 
                         alias, 
                         required, 
+                        callable,
                         definition_type
                      from state_column_key_definition 
                      where state_id = %s
@@ -1252,7 +1032,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     logging.debug(f'no key definition found for {state_id} and {definition_type}')
                     return
 
-                key_definitions = self.map_rows_to_dicts(cursor, rows=rows)
+                key_definitions = map_rows_to_dicts(cursor, rows=rows)
                 return [
                     StateDataKeyDefinition.model_validate(definition)
                     for definition in key_definitions
@@ -1265,34 +1045,38 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
     def insert_state_primary_key_definition(self, state: State):
         primary_key_definition = state.config.primary_key
-        self.insert_state_key_definition(state=state,
-                                         key_definition_type='primary_key',
-                                         definitions=primary_key_definition)
+        return self.insert_state_key_definition(
+            state=state,
+            key_definition_type='primary_key',
+            definitions=primary_key_definition)
 
     def insert_query_state_inheritance_key_definition(self, state: State):
         query_state_inheritance = state.config.query_state_inheritance
-        self.insert_state_key_definition(state=state,
-                                         key_definition_type='query_state_inheritance',
-                                         definitions=query_state_inheritance)
+        return self.insert_state_key_definition(
+            state=state,
+            key_definition_type='query_state_inheritance',
+            definitions=query_state_inheritance)
 
     def insert_remap_query_state_columns_key_definition(self, state: State):
         remap_query_state_columns = state.config.remap_query_state_columns
-        self.insert_state_key_definition(state=state,
-                                         key_definition_type='remap_query_state_columns',
-                                         definitions=remap_query_state_columns)
+        return self.insert_state_key_definition(
+            state=state,
+            key_definition_type='remap_query_state_columns',
+            definitions=remap_query_state_columns)
 
     def insert_template_columns_key_definition(self, state: State):
         template_columns = state.config.template_columns
-        self.insert_state_key_definition(state=state,
-                                         key_definition_type='template_columns',
-                                         definitions=template_columns)
+        return self.insert_state_key_definition(
+            state=state,
+            key_definition_type='template_columns',
+            definitions=template_columns)
 
     def insert_state_key_definition(self,
                                     state: State,
                                     key_definition_type: str,
                                     definitions: List[StateDataKeyDefinition]):
 
-        state_id = self.create_state_id_by_state(state=state)
+        state_id = create_state_id_by_state(state=state)
 
         if not definitions:
             logging.info(
@@ -1302,40 +1086,48 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
+                sql_insert = """
+                    INSERT INTO state_column_key_definition (state_id, name, alias, required, callable, definition_type)
+                    VALUES (%(state_id)s, %(name)s, %(alias)s, %(required)s, %(callable)s, %(definition_type)s)
+                    RETURNING id
+                """
 
-                sql = """
-                           MERGE INTO state_column_key_definition AS target
-                           USING (SELECT 
-                                    %s AS state_id, 
-                                    %s AS name, 
-                                    %s AS alias, 
-                                    %s AS required, 
-                                    %s AS definition_type) AS source
-                              ON target.state_id = source.state_id 
-                             AND target.name = source.name
-                             AND target.definition_type = source.definition_type
-                           WHEN NOT MATCHED THEN 
-                               INSERT (state_id, name, alias, required, definition_type)
-                               VALUES (
-                                    source.state_id, 
-                                    source.name, 
-                                    source.alias, 
-                                    source.required, 
-                                    source.definition_type)
-                       """
+                sql_update = """
+                    UPDATE state_column_key_definition SET
+                        name = %(name)s, 
+                        alias = %(alias)s, 
+                        required = %(required)s, 
+                        callable = %(callable)s, 
+                        definition_type = %(definition_type)s
+                     WHERE state_id = %(state_id)s AND id = %(id)s 
+                """
 
                 # prepare to insert column key definitions
                 for key_definition in definitions:
-                    values = [
-                        state_id,
-                        key_definition.name,
-                        key_definition.alias,
-                        key_definition.required,
-                        key_definition_type,
-                    ]
+
+                    values = {
+                        'state_id': state_id,
+                        'name': key_definition.name,
+                        'alias': key_definition.alias,
+                        'required': key_definition.required,
+                        'callable': key_definition.callable,
+                        'definition_type': key_definition_type
+                    }
+
+                    sql = sql_insert
+                    if key_definition.id:
+                        sql = sql_update
+                        values = {**values, 'id': key_definition.id}
+
                     cursor.execute(sql, values)
 
-            conn.commit()
+                    # fetch the id from the returning sql statement
+                    if not key_definition.id:
+                        key_definition.id = cursor.fetchone()[0]
+
+                conn.commit()
+
+            return definitions
         except Exception as e:
             logging.error(e)
             raise e
@@ -1401,7 +1193,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                        """
 
                 # derive the state id
-                state_id = self.create_state_id_by_state(state)
+                state_id = create_state_id_by_state(state)
 
                 if state_key_mapping_set:
                     for state_key in state_key_mapping_set:
@@ -1443,7 +1235,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def load_state_basic(self, state_id: str):
-        state_dict = self.fetch_state_by_state_id(state_id=state_id)
+        state_dict = self.fetch_state(state_id=state_id)
         if not state_dict:
             return None
 
@@ -1518,7 +1310,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         return self.fetch_state_column_data_mappings(
             state_id=state_id)
 
-    def load_state(self, state_id: str):
+    def load_state(self, state_id: str, load_data: bool = True):
         # basic state instance
         state = self.load_state_basic(state_id=state_id)
 
@@ -1532,6 +1324,99 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         return state
 
+    def delete_state_cascade(self, state_id):
+        self.delete_state_column_data_mapping(state_id=state_id)
+        self.delete_state_column_data(state_id=state_id)
+        self.delete_state_column(state_id=state_id)
+
+        self.delete_state_config_key_definitions(state_id=state_id)
+        self.delete_state_config(state_id=state_id)
+        self.delete_state(state_id=state_id)
+
+    def delete_state(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state WHERE id = %s"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_state_config(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state_config WHERE state_id = %s"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_state_column_data_mapping(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state_column_data_mapping WHERE state_id = %s"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_state_column(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state_column WHERE state_id = %s"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_state_column_data(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state_column_data WHERE column_id in (SELECT id FROM state_column WHERE state_id = %s)"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_state_config_key_definitions(self, state_id):
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM state_column_key_definition WHERE state_id = %s"
+                cursor.execute(sql, [state_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
     def save_state(self, state: State):
 
         first_time = state.persisted_position <= 0
@@ -1539,7 +1424,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         # TODO needs revision as columns and structures may change, need a way to check for
         #  consistency similar to how it is done at the processor apply_column,apply_data functions
         if not self.incremental or first_time:
-            state_id = self.insert_state(state=state)
+            state = self.insert_state(state=state)
             self.insert_state_config(state=state)
             self.insert_state_columns(state=state)
             self.insert_state_columns_data(state=state, incremental=False)
@@ -1550,7 +1435,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.insert_template_columns_key_definition(state=state)
         else:
 
-            state_id = self.create_state_id_by_state(state)
+            state_id = create_state_id_by_state(state)
 
             # the incremental function returns the list of state keys that need to be applied
             primary_key_mapping_update_set = self.insert_state_columns_data(state=state, incremental=True)
@@ -1562,4 +1447,4 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             if primary_key_mapping_update_set:
                 self.insert_state(state=state)
 
-        return state_id
+        return state

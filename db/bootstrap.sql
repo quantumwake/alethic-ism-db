@@ -1,15 +1,15 @@
-drop table if exists user_profile;
+drop table if exists user_profile cascade;
 create table user_profile (
     user_id varchar(36) not null primary key
 );
 
 insert into user_profile (user_id) values ('a57263b6-8869-406b-91e9-bdfb8dfd6785');
 
-drop table if exists user_project;
+drop table if exists user_project cascade;
 create table user_project (
   project_id varchar(36) not null primary key,
   project_name varchar(255) not null,
-  user_id varchar(36) not null references user_profile (user_id),
+  user_id varchar(36) not null references user_profile (user_id)
 );
 
 -- select gen_random_uuid();
@@ -27,25 +27,6 @@ create table workflow_node (
     height int null
 );
 
-alter table workflow_node add column position_x int not null default 0;
-alter table workflow_node add column position_y int not null default 0;
-
-delete from workflow_edge where 1=1;
-delete from workflow_node where 1=1;
-
-select * from user_profile;
-
-select * from user_project;
-
-update workflow_node set node_type = 'state' where node_type = 'State';
-update workflow_node set node_type = 'processor_dual_state_merge' where node_type = 'dual_state_merge_processor';
-
-delete from user_project where 1=1;
-select * from user_project;
-select * from workflow_node;
-select * from workflow_edge;
-select * from state;
-
 drop table if exists workflow_edge;
 create table workflow_edge (
     source_node_id varchar(255) not null references workflow_node (node_id),
@@ -56,17 +37,6 @@ create table workflow_edge (
     edge_label varchar(255) null,
     primary key (source_node_id, target_node_id)
 );
-
-insert into user_project (project_id, project_name, user_id)
-values ('8c84e186-f69a-4e91-83cd-787d40a91230',
-        'Test Project',
-        'a57263b6-8869-406b-91e9-bdfb8dfd6785');
-
-
-alter table template add template_id varchar(36);
-update template set template_id = gen_random_uuid();
-alter table template alter column template_id varchar(36) not null;
-
 
 drop table if exists template;
 create table template (
@@ -87,9 +57,6 @@ create table state
     state_type varchar(255) not null default 'StateConfig'
 );
 
--- alter table processor_state drop column project_id;
--- alter table state add column project_id varchar(36) null references user_project (project_id);
-
 drop table if exists state_config;
 create table state_config (
     state_id varchar(255) not null,
@@ -100,12 +67,13 @@ create table state_config (
 
 drop table if exists state_column_key_definition;
 create table state_column_key_definition(
+    id serial not null primary key,
     state_id varchar(255) not null references state (id),
     name varchar(255) not null,
     alias varchar(255),
     required bool default false,
-    definition_type varchar(255) not null,
-    primary key (state_id, name, definition_type)
+    callable bool default false,
+    definition_type varchar(255) not null
 );
 
 drop table if exists state_column cascade;
@@ -116,7 +84,7 @@ create table state_column (
     data_type varchar(64) default 'str',
     "null" boolean default true,
     min_length int default 0,
-    max_length int default x255,
+    max_length int default 255,
     dimensions int default 384,
     value varchar(255),
     source_column_name varchar(255)
@@ -129,7 +97,6 @@ create table state_column_data
     data_index bigint not null,
     data_value text
 );
-
 
 drop table if exists state_column_data_mapping;
 create table state_column_data_mapping (
@@ -152,19 +119,42 @@ insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.0')
 insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.1');
 commit;
 
-drop table if exists processor cascade;
-create table processor (
-    id varchar(255) not null primary key,
-    type varchar(255) not null,
-    unique(id, type)
+drop table processor_class cascade;
+create table processor_class (
+    class_name varchar(32) not null primary key
 );
 
-insert into processor (id, type) values ('language/models/openai/gpt-4-1106-preview', 'OpenAIQuestionAnswerProcessor');
-insert into processor (id, type) values ('language/models/anthropic/claude-2.0', 'AnthropicQuestionAnswerProcessor');
-insert into processor (id, type) values ('language/models/anthropic/claude-2.1', 'AnthropicQuestionAnswerProcessor');
-commit;
+INSERT INTO processor_class VALUES ('CodeProcessing');
+INSERT INTO processor_class VALUES ('NaturalLanguageProcessing');
+INSERT INTO processor_class VALUES ('ImageProcessing');
+INSERT INTO processor_class VALUES ('DataTransformation');
+INSERT INTO processor_class VALUES ('TextProcessing');
+INSERT INTO processor_class VALUES ('VideoProcessing');
+INSERT INTO processor_class VALUES ('AudioProcessing');
+INSERT INTO processor_class VALUES ('DataAnalysis');
+INSERT INTO processor_class VALUES ('SignalProcessing');
+INSERT INTO processor_class VALUES ('MachineLearning');
 
-drop table if exists processor_state;
+DROP TABLE IF EXISTS processor_provider cascade;
+CREATE TABLE processor_provider (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    version VARCHAR(32) NOT NULL,
+    class_name VARCHAR(32) NOT NULL REFERENCES processor_class (class_name),
+    user_id varchar(36) NULL REFERENCES user_profile (user_id),
+    project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
+);
+
+INSERT INTO processor_provider (id, name, version, class_name) VALUES
+('language/models/openai/gpt-4-1106-preview', 'OpenAI', 'gpt-4-1106-preview', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-3.0', 'Anthropic', 'claude-3', 'NaturalLanguageProcessing'),
+('data/transformer/alethic/state-fuser-1.0', 'Alethic', 'state-fuser-1.0', 'DataTransformation'),
+('data/transformer/alethic/state-monte-carlo-1.0', 'Alethic', 'state-monte-carlo-1.0', 'DataTransformation')
+ON CONFLICT DO NOTHING;
+
+drop type if exists processor_status cascade;
 create type processor_status AS ENUM (
        'CREATED', 'QUEUED',
        'RUNNING', 'TERMINATED',
@@ -172,53 +162,24 @@ create type processor_status AS ENUM (
        'FAILED'
 );
 
+drop table if exists processor cascade;
+create table processor (
+    id varchar(36) not null primary key,
+    provider_id varchar(36) not null references processor_provider (id),
+    project_id varchar(36) not null references user_project (project_id),
+    status processor_status not null
+);
 
+drop type if exists processor_state_direction cascade;
+create type processor_state_direction AS ENUM (
+       'INPUT', 'OUTPUT'
+);
 
 drop table if exists processor_state;
 create table processor_state (
-    processor_id varchar(255) not null references processor (id),
-    input_state_id  varchar(255) not null references state (id),
-    output_state_id varchar(255) not null references state (id),
-    status processor_status not null default 'CREATED',
-    primary key (processor_id, input_state_id, output_state_id)
+    processor_id varchar(36) not null primary key,
+    state_id varchar(36) not null references state (id),
+    direction processor_state_direction not null
 );
 
-alter table processor_state add column project_id varchar(36) null references user_project (project_id);
-
-
-------------------
---- VIEWS
-------------------
-drop view if exists state_column_data_view;
-create or replace view state_column_data_view
-as
-select state_id,
-       c.id as column_id,
-       c.name,
-    case
-        when d.data_value is null then c.value
-        else d.data_value
-    end as data_value,
-    d.data_index
-from state_column_data d
- inner join state_column c
-    on c.id = d.column_id;
-
-
-create or replace view state_column_state_grouped_view
-as select state_id, name, count(data_index) as cnt
-     from state_column_data_view
-    group by state_id, name
-    order by state_id, name;
-
-
-create index state_column_data_mapping__state_key_idx on state_column_data_mapping (state_key);
-create index state_column_data_mapping__state_id_idx on state_column_data_mapping (state_id);
-create index state_column_data_mapping__data_index_idx on state_column_data_mapping (data_index);
-create index state_column_data__index_idx on state_column_data (data_index);
-create index state_column_data__column_id_idx on state_column_data (column_id);
-create index state_column_data__composite_id_idx on state_column_data (data_index, column_id);
-create index state_config__state_id_idx on state_config (state_id);
-create index state_column_key_definition__state_id_idx on state_column_key_definition (state_id);
-create index state_column__state_id_idx on state_column (state_id);
-
+commit;
