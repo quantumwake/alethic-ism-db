@@ -197,6 +197,9 @@ class BaseDatabaseAccess():
                     DO UPDATE SET project_name = EXCLUDED.project_name
                 """
 
+                # assign project id if project id is not assigned
+                user_project.project_id = user_project.project_id if user_project.project_id else str(uuid.uuid4())
+
                 values = [
                     user_project.project_id,
                     user_project.project_name,
@@ -612,14 +615,13 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: State(**row))
 
-    def fetch_state(self, state_id: str):
+    def fetch_state(self, state_id: str) -> Optional[State]:
         return self.execute_query_one(
             sql="SELECT * FROM state",
             conditions={
-                'state_id': state_id
+                'id': state_id
             },
             mapper=lambda row: State(**row))
-
 
     def insert_state(self, state: State, config_uuid=False):
         conn = self.create_connection()
@@ -634,12 +636,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO state (id, project_id, name, state_type, count, version) 
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO state (id, project_id, state_type, count) 
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (id) 
                     DO UPDATE SET 
-                        name = EXCLUDED.name,
-                        version = EXCLUDED.version, 
                         state_type = EXCLUDED.state_type,
                         count = EXCLUDED.count
                 """
@@ -648,10 +648,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 values = [
                     state.id,
                     state.project_id,
-                    state.config.name.strip(),
                     state.state_type,
-                    state.count,
-                    state.config.version.strip() if state.config.version else state.config.version
+                    state.count
                 ]
 
                 cursor.execute(sql, values)
@@ -776,6 +774,14 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             {
                 "name": "storage_class",
                 "data": "database"
+            },
+            {
+                "name": "name",
+                "data": state.config.name
+            },
+            {
+                "name": "version",
+                "data": state.config.version
             }
         ]
 
@@ -1235,11 +1241,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def load_state_basic(self, state_id: str):
-        state_dict = self.fetch_state(state_id=state_id)
-        if not state_dict:
+        state = self.fetch_state(state_id=state_id)
+        if not state:
             return None
 
-        state_type = state_dict['state_type']
+        state_type = state.state_type
 
         # rebuild the key definitions
         primary_key = self.fetch_state_key_definition(
@@ -1261,8 +1267,6 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         # fetch list of attributes associated to this state, if any
         config_attributes = self.fetch_state_config(state_id=state_id)
         general_attributes = {
-            "name": state_dict['name'],
-            "version": state_dict['version'],
             "primary_key": primary_key,
             "query_state_inheritance": query_state_inheritance,
             "remap_query_state_columns": remap_query_state_columns,
@@ -1282,15 +1286,18 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         else:
             raise NotImplementedError(f'unsupported type {state_type}')
 
-        count = state_dict['count']
-        # build the state definition
-        state_instance = State(
-            **state_dict,
-            config=config,
-            persisted_position=count - 1,
-        )
+        state.config = config
+        state.persisted_position = state.count - 1
 
-        return state_instance
+        # count = state.count
+        # build the state definition
+        # state_instance = State(
+        #     **state_dict,
+        #     config=config,
+        #     persisted_position=count - 1,
+        # )
+
+        return state
 
     def load_state_columns(self, state_id: str):
         # rebuild the column definition

@@ -16,7 +16,7 @@ create table user_project (
 
 drop table if exists workflow_node cascade;
 create table workflow_node (
-    node_id varchar(255) not null primary key,
+    node_id varchar(36) not null primary key,
     object_id varchar(255) null,    -- the actual object id based on the identifier
     node_type varchar(255) not null,
     node_label varchar(255) null,
@@ -29,8 +29,8 @@ create table workflow_node (
 
 drop table if exists workflow_edge;
 create table workflow_edge (
-    source_node_id varchar(255) not null references workflow_node (node_id),
-    target_node_id varchar(255) not null references  workflow_node (node_id),
+    source_node_id varchar(36) not null references workflow_node (node_id),
+    target_node_id varchar(36) not null references  workflow_node (node_id),
     source_handle varchar(255) null,
     target_handle varchar(255) null,
     animated bool not null default true,
@@ -50,9 +50,10 @@ create table template (
 drop table if exists state cascade;
 create table state
 (
-    id varchar(255) not null primary key,
-    name varchar(255) not null,
-    version varchar(255) not null,
+    id varchar(36) not null primary key,
+    project_id varchar(36) null references user_project (project_id),
+--     name varchar(255) not null,
+--     version varchar(255) not null,
     count int not null default 0,
     state_type varchar(255) not null default 'StateConfig'
 );
@@ -79,7 +80,7 @@ create table state_column_key_definition(
 drop table if exists state_column cascade;
 create table state_column (
     id serial not null primary key,
-    state_id varchar(255) not null references state(id),
+    state_id varchar(36) not null references state(id),
     name varchar(255) not null,
     data_type varchar(64) default 'str',
     "null" boolean default true,
@@ -100,7 +101,7 @@ create table state_column_data
 
 drop table if exists state_column_data_mapping;
 create table state_column_data_mapping (
-    state_id varchar(255) not null,
+    state_id varchar(36) not null,
     state_key varchar(255) not null,
     data_index bigint not null,
     primary key (state_id, state_key, data_index)
@@ -165,7 +166,7 @@ create type processor_status AS ENUM (
 drop table if exists processor cascade;
 create table processor (
     id varchar(36) not null primary key,
-    provider_id varchar(36) not null references processor_provider (id),
+    provider_id varchar(255) not null references processor_provider (id),
     project_id varchar(36) not null references user_project (project_id),
     status processor_status not null
 );
