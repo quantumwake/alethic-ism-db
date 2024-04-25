@@ -18,7 +18,8 @@ from tests.mock_data import (
     create_mock_processor_state_1,
     create_mock_random_state,
     create_mock_animal_state,
-    create_mock_processor_provider, create_mock_processor_state_2
+    create_mock_processor_provider, create_mock_processor_state_2, create_mock_processor, create_user_project0,
+    create_user_profile
 )
 
 
@@ -165,18 +166,25 @@ def test_create_template():
         )
         db_storage.insert_template(template=instruction)
 
-    templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
+    templates = db_storage.fetch_templates()
+    assert templates is not None
+    templates = [x for x in templates if x.template_path.startswith('test/template/')]
     assert len(templates) == 9
 
+    # delete the templates
     for template in templates:
-        db_storage.delete_template(template_id=template.template_id)
+        db_storage.delete_template(
+            template_id=template.template_id
+        )
 
-    templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
-    assert len(templates) == 0
+    templates = db_storage.fetch_templates()
+    assert templates is None
 
 
 def test_create_processor():
-    processor = create_mock_processor_state_1()
+    # fix the ids to avoid interference with other tests
+    processor = create_mock_processor(processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4",
+                                      provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4")
     assert processor.id is not None
 
     processors = db_storage.fetch_processors()
@@ -184,14 +192,19 @@ def test_create_processor():
 
     assert len(processors) == 1
     assert processors[0].id == processor.id
-    assert processors[0].type == processor.type
+    assert processors[0].status == StatusCode.CREATED
+    assert processors[0].provider_id == processor.provider_id
 
     found_processor = db_storage.fetch_processor(processor_id=processor.id)
     assert found_processor is not None
     assert found_processor.id is not None
 
+
 def test_create_processor_provider():
-    provider = create_mock_processor_provider()
+    # fix the ids so it doesn't interfere with other test cases
+    provider = create_mock_processor_provider(project_id="cf482595-7bac-44fb-985c-7cd63c5f49ca",
+                                              provider_id="cf482595-7bac-44fb-985c-7cd63c5f49ca",
+                                              user_id="cf482595-7bac-44fb-985c-7cd63c5f49ca")
     providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
     assert len(providers) == 1
     assert providers[0].id is not None
@@ -201,9 +214,9 @@ def test_create_processor_provider():
     assert providers[0].user_id == provider.user_id
     assert providers[0].project_id == provider.project_id
 
-    db_storage.delete_processor_provider(provider_id=provider.id)
+    db_storage.delete_processor_provider(user_id=provider.user_id, provider_id=provider.id)
     providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
-    assert len(providers) == 0
+    assert providers is None
 
 
 def test_create_processor_state():
@@ -264,9 +277,10 @@ def test_state_config_lm():
     lm_new_state = create_mock_random_state()
     assert isinstance(lm_new_state.config, StateConfigLM)
 
-    state_id = db_storage.save_state(state=lm_new_state)
-    lm_load_state = db_storage.load_state(state_id=state_id)
+    state = db_storage.save_state(state=lm_new_state)
+    lm_load_state = db_storage.load_state(state_id=state.id)
     assert isinstance(lm_load_state.config, StateConfigLM)
+
 
 def test_create_state_json():
     state_json = {
@@ -302,6 +316,7 @@ def test_create_state_json():
     state_object = State(**state_json)
     assert state_object.state_type == type(state_object.config).__name__
 
+
 def test_create_state_update_state_details():
     state_json = {
         "id": "00000000-0000-0000-0000-0000000000ff",
@@ -320,27 +335,35 @@ def test_create_state_update_state_details():
     }
 
     state = State(**state_json)
-    state_id = db_storage.save_state(state)
-    loaded_state = db_storage.load_state(state_id=state_id)
+    saved_state = db_storage.save_state(state)
+    assert state.id == saved_state.id
+
+    loaded_state = db_storage.load_state(state_id=saved_state.id)
     assert loaded_state.state_type == state.state_type
     assert loaded_state.config.name == state.config.name
     assert loaded_state.id == state.id
 
     loaded_state.config.name = "Test State 2"
 
-    state_id = db_storage.save_state(loaded_state)
-    loaded_state_again = db_storage.load_state(state_id=state_id)
+    updated_state = db_storage.save_state(loaded_state)
+    loaded_state_again = db_storage.load_state(state_id=updated_state.id)
     assert loaded_state.config.name == loaded_state_again.config.name
 
 
 def test_create_state():
-    state1 = create_mock_random_state()
-    state2 = create_mock_animal_state()
+    user_profile = create_user_profile(user_id="e3a8d9d1-3d5b-482a-99fd-6bcf584249b2")
+    user_project = create_user_project0(user_id=user_profile.user_id, project_id="e3a8d9d1-3d5b-482a-99fd-6bcf584249b2")
 
-    state_id_1 = db_storage.save_state(state=state1)
-    state_id_2 = db_storage.save_state(state=state2)
+    state1 = create_mock_random_state(state_id="491c7f37-e329-4044-921e-868b3f9650da",
+                                      project_id=user_project.project_id)
 
-    states = db_storage.fetch_states()
+    state2 = create_mock_animal_state(state_id="491c7f37-e329-4044-921e-868b3f9650db",
+                                      project_id=user_project.project_id)
+
+    saved_state_1 = db_storage.save_state(state=state1)
+    saved_state_2 = db_storage.save_state(state=state2)
+
+    states = db_storage.fetch_states(project_id=user_project.project_id)
     # states = [s for s in states if s['id'] in [state_id_1, state_id_2]]
     assert len(states) == 2
 

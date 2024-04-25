@@ -42,8 +42,10 @@ def create_mock_template_state(persist: bool = False) -> State:
     return state
 
 
-def create_mock_animal_state(persist: bool = False) -> State:
+def create_mock_animal_state(state_id: str = None, project_id: str = None, persist: bool = False) -> State:
     state = State(
+        id=state_id,
+        project_id=project_id,
         config=StateConfig(
             name="Test Me (Animals)",
             primary_key=[
@@ -119,14 +121,14 @@ def create_mock_animal_template_dual_empty_output_state(persist: bool = False) -
     return state
 
 
-def create_mock_processor_provider():
-    user_profile = create_user_profile()
-    user_project = create_user_project0(user_id=user_profile.user_id)
+def create_mock_processor_provider(user_id: str = None, project_id: str = None, provider_id: str = None):
+    user_profile = create_user_profile(user_id=user_id)
+    user_project = create_user_project0(project_id=project_id, user_id=user_profile.user_id)
 
     # create a processor provider and then remove it at the end
     provider = db_storage.insert_processor_provider(
         provider=ProcessorProvider(
-            # id="test/something-1.0",
+            id=provider_id if provider_id else None,
             name="Test",
             version="test-something-1.0",
             class_name="DataTransformation",
@@ -138,10 +140,10 @@ def create_mock_processor_provider():
     return db_storage.insert_processor_provider(provider=provider)
 
 
-def create_mock_processor():
-    provider = create_mock_processor_provider()
+def create_mock_processor(processor_id: str = None, provider_id: str = None):
+    provider = create_mock_processor_provider(provider_id=provider_id)
     processor = Processor(
-        id="faa25cd2-ce16-4bdb-9591-b326f4336872",
+        id=processor_id if processor_id else "faa25cd2-ce16-4bdb-9591-b326f4336872",
         provider_id=provider.id,
         project_id=provider.project_id,
         status=StatusCode.CREATED
@@ -181,8 +183,10 @@ def create_mock_processor_state_2() -> ProcessorState:
     return processor_state
 
 
-def create_mock_random_state() -> State:
+def create_mock_random_state(state_id: str = None, project_id: str = None) -> State:
     state = State(
+        id=state_id,
+        project_id=project_id,
         config=StateConfigLM(
             name="Test Language Model Configuration with Template",
             user_template_id="./test_templates/test_template_P1_user.json",
@@ -251,9 +255,9 @@ def create_user_profile(user_id: str = None) -> UserProfile:
 
 
 def create_user_project0(user_id: str, project_id: str = None) -> UserProject:
-    uuid_str = "00000000-0000-0000-0000-00000000000a" if not project_id else project_id
+    project_id = "00000000-0000-0000-0000-00000000000a" if not project_id else project_id
     user_project = UserProject(
-        project_id=uuid_str,
+        project_id=project_id,
         project_name="Project Test 0",
         user_id=user_id
     )
