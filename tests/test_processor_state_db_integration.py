@@ -1,12 +1,14 @@
+from core.base_model import InstructionTemplate, StatusCode
 from core.processor_state import (
     StateConfigLM,
-    InstructionTemplate,
-    StatusCode, State, StateConfig, StateDataKeyDefinition
+    State,
+    StateConfig,
+    StateDataKeyDefinition
 )
 
 from core.processor_state_storage import ProcessorState
 from core.utils.state_utils import validate_processor_status_change
-from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage
+from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage, PostgresDatabaseStorage
 
 from tests.mock_data import (
     DATABASE_URL,
@@ -27,7 +29,6 @@ def test_state_key_definition_update():
         id=state_id,
         config=StateConfig(
             name="hello world",
-            version="test version",
             primary_key=[
                 StateDataKeyDefinition(
                     name="test key",
@@ -78,7 +79,6 @@ def test_state_with_id():
         id="53c7d78d-c90c-48c7-a397-bd4ae882aeb9",
         config=StateConfig(
             name="hello world",
-            version="test version",
             primary_key=[
                 StateDataKeyDefinition(
                     name="test_key",
@@ -89,10 +89,11 @@ def test_state_with_id():
         )
     )
 
-    state_id = db_storage.save_state(state=state)
-    loaded_state = db_storage.load_state(state_id=state_id)
+    saved_state = db_storage.save_state(state=state)
+    loaded_state = db_storage.load_state(state_id=saved_state.id)
 
-    assert state_id == state.id
+    assert saved_state.id == state.id
+    assert loaded_state.id == saved_state.id
     assert loaded_state.state_type == state.state_type
     assert loaded_state.state_type == "StateConfig"
 
@@ -111,18 +112,18 @@ def test_incremental_save_state():
     state = create_mock_state_for_incremental_save()
 
     # create a new incremental state storage class
-    storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL, incremental=True)
+    storage = PostgresDatabaseStorage(database_url=DATABASE_URL, incremental=True)
 
-    state_id = storage.save_state(state)
-    loaded_state = storage.load_state(state_id=state_id)
+    state = storage.save_state(state)
+    loaded_state = storage.load_state(state_id=state.id)
     check(state1=state, state2=loaded_state)
 
     # add more rows and check again
     state = create_mock_state_for_incremental_save_add_more_rows(state=state)
-    state_id = storage.save_state(state)
+    state = storage.save_state(state=state)
 
     # fetch and check data consistency
-    loaded_state = storage.load_state(state_id=state_id)
+    loaded_state = storage.load_state(state_id=state.id)
     check(state1=state, state2=loaded_state)
 
 
@@ -146,14 +147,15 @@ def test_create_template_newlines():
         "project_id": None
     }
 
-    template_id = db_storage.insert_template(**template_dict)
-    fetched_template = db_storage.fetch_template(template_id)
-    assert template_id == template_id
+    template = InstructionTemplate(**template_dict)
+    template = db_storage.insert_template(template=template)
+    fetched_template = db_storage.fetch_template(template.template_id)
+    assert template_id == template.template_id
 
     print(fetched_template)
 
-def test_create_template():
 
+def test_create_template():
     for i in range (9):
         instruction = InstructionTemplate(
             template_id=f"b071c1ec-c6b7-4516-86c8-839458a0ed2{i}",
@@ -161,7 +163,7 @@ def test_create_template():
             template_content="hello world {i}",
             template_type="user_template"
         )
-        db_storage.insert_template(instruction_template=instruction)
+        db_storage.insert_template(template=instruction)
 
     templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
     assert len(templates) == 9
@@ -171,26 +173,6 @@ def test_create_template():
 
     templates = [x for x in db_storage.fetch_templates() if x.template_path.startswith('test/template/')]
     assert len(templates) == 0
-
-
-# def test_fetch_models():
-#     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-#     models = db_storage.fetch_models()
-#     assert len(models) > 0
-#
-#
-# def test_create_model():
-#     db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
-#
-#     # create a mock model
-#     model = create_mock_model()
-#
-#     assert model.id is not None
-#     models = [m for m in db_storage.fetch_models()
-#               if m.model_name == model.model_name
-#               and m.provider_name == model.provider_name]
-#
-#     assert len(models) == 1
 
 
 def test_create_processor():
@@ -292,7 +274,6 @@ def test_create_state_json():
         "state_type": "StateConfigLM",
         "config": {
             "name": "Test State 1",
-            "version": "default version",
             "storage_class": "database",
             "primary_key": [
                 {
@@ -327,7 +308,6 @@ def test_create_state_update_state_details():
         "state_type": "StateConfig",
         "config": {
             "name": "Test State 1",
-            "version": "default version",
             "storage_class": "database",
             "primary_key": [
                 {
@@ -344,16 +324,13 @@ def test_create_state_update_state_details():
     loaded_state = db_storage.load_state(state_id=state_id)
     assert loaded_state.state_type == state.state_type
     assert loaded_state.config.name == state.config.name
-    assert loaded_state.config.version == state.config.version
     assert loaded_state.id == state.id
 
     loaded_state.config.name = "Test State 2"
-    loaded_state.config.version = "Test State Version 2"
 
     state_id = db_storage.save_state(loaded_state)
     loaded_state_again = db_storage.load_state(state_id=state_id)
     assert loaded_state.config.name == loaded_state_again.config.name
-    assert loaded_state.config.version == loaded_state_again.config.version
 
 
 def test_create_state():

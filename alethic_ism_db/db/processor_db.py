@@ -22,7 +22,7 @@ from core.processor_state import (
     StateConfig,
     get_column_state_value,
     implicit_count_with_force_count,
-    find_state_files
+    # find_state_files
 )
 
 # Read database URL from environment variable, defaulting to a local PostgreSQL database
@@ -554,14 +554,18 @@ def process_file_by_config(config_file: str):
         if not path:
             raise ImportError(f'path not specified in state source: {state_source}')
 
-        state_files = find_state_files(search_path=path,
-                                       search_recursive=recursive,
-                                       state_name_match=state_name_match,
-                                       state_path_match=state_path_match)
 
-        if not state_files:
-            logging.info(f'No state files found in path {path} using state source config {state_source}')
-            continue
+
+        raise NotImplemented() ## TODO
+        #
+        # state_files = find_state_files(search_path=path,
+        #                                search_recursive=recursive,
+        #                                state_name_match=state_name_match,
+        #                                state_path_match=state_path_match)
+
+        # if not state_files:
+        #     logging.info(f'No state files found in path {path} using state source config {state_source}')
+        #     continue
 
         # process individual files as defined in the configuration file
         return process_files(files=state_files,

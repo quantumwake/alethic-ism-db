@@ -1,25 +1,23 @@
 import os
 import random
 
-from core.processor_state import State, StateConfig, StateDataKeyDefinition, StatusCode, StateConfigLM, \
-    ProcessorStateDirection
+from core.base_model import StatusCode, ProcessorStateDirection, UserProfile, UserProject, WorkflowNode, WorkflowEdge
+from core.processor_state import State, StateConfig, StateDataKeyDefinition, StateConfigLM
 from core.processor_state_storage import Processor, ProcessorState, ProcessorProvider
 
 from alethic_ism_db.db.misc_utils import create_state_id_by_state
-from alethic_ism_db.db.models import WorkflowEdge, WorkflowNode, UserProject, UserProfile
-from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage
+from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 
 # model = create_mock_model()
-db_storage = ProcessorStateDatabaseStorage(database_url=DATABASE_URL)
+db_storage = PostgresDatabaseStorage(database_url=DATABASE_URL)
 
 
 def create_mock_template_state(persist: bool = False) -> State:
     state = State(
         config=StateConfig(
             name="Test Me (Instructions)",
-            version="Test version 0.0",
             primary_key=[
                 StateDataKeyDefinition(name="name", alias="query_template_id")
             ]
@@ -48,7 +46,6 @@ def create_mock_animal_state(persist: bool = False) -> State:
     state = State(
         config=StateConfig(
             name="Test Me (Animals)",
-            version="Test version 0.0",
             primary_key=[
                 StateDataKeyDefinition(name="animal")
             ],
@@ -87,7 +84,8 @@ def create_mock_dual_state_processor():
     processor = Processor(
         id="test/mock/testprocessor",
         provider_id=provider.id,
-        project_id=provider.project_id
+        project_id=provider.project_id,
+        status=StatusCode.CREATED
     )
 
     return db_storage.insert_processor(processor=processor)
@@ -98,7 +96,6 @@ def create_mock_animal_template_dual_empty_output_state(persist: bool = False) -
     state = State(
         config=StateConfig(
             name="Test Dual State Merger Output State (Animals x Template)",
-            version="Test version 0.0",
             primary_key=[  # the primary key to define for the new state object
                 StateDataKeyDefinition(name="animal"),
                 StateDataKeyDefinition(name="query_template_id")
@@ -147,7 +144,7 @@ def create_mock_processor():
         id="faa25cd2-ce16-4bdb-9591-b326f4336872",
         provider_id=provider.id,
         project_id=provider.project_id,
-        processor_status=StatusCode.CREATED
+        status=StatusCode.CREATED
     )
     return db_storage.insert_processor(processor=processor)
 
@@ -188,11 +185,8 @@ def create_mock_random_state() -> State:
     state = State(
         config=StateConfigLM(
             name="Test Language Model Configuration with Template",
-            version="Test version 0.0.0",
-            model_name="OpenAI",
-            provider_name="gpt4",
-            user_template_path="./test_templates/test_template_P1_user.json",
-            system_template_path="./test_templates/test_template_P1_system.json"
+            user_template_id="./test_templates/test_template_P1_user.json",
+            system_template_id="./test_templates/test_template_P1_system.json"
         )
     )
 
@@ -214,14 +208,11 @@ def create_mock_state_for_incremental_save() -> State:
     state = State(
         config=StateConfigLM(
             name="Test Language Model Configuration with Template",
-            version="Test version 0.0.1",
-            model_name="OpenAI",
-            provider_name="gpt4",
             primary_key=[
                 StateDataKeyDefinition(name="data")
             ],
-            user_template_path="./test_templates/test_template_P1_user.json",
-            system_template_path="./test_templates/test_template_P1_system.json"
+            user_template_id="./test_templates/test_template_P1_user.json",
+            system_template_id="./test_templates/test_template_P1_system.json"
         )
     )
 
@@ -250,17 +241,17 @@ def create_mock_state_for_incremental_save_add_more_rows(state: State):
     return state
 
 
-def create_user_profile() -> UserProfile:
-    uuid_str = "f401db9b-50fd-4960-8661-de3e7c2f9092"
+def create_user_profile(user_id: str = None) -> UserProfile:
+    user_id = "f401db9b-50fd-4960-8661-de3e7c2f9092" if not user_id else user_id
     user_profile = UserProfile(
-        user_id=uuid_str
+        user_id=user_id
     )
 
     return db_storage.insert_user_profile(user_profile=user_profile)
 
 
-def create_user_project0(user_id: str) -> UserProject:
-    uuid_str = "00000000-0000-0000-0000-00000000000a"
+def create_user_project0(user_id: str, project_id: str = None) -> UserProject:
+    uuid_str = "00000000-0000-0000-0000-00000000000a" if not project_id else project_id
     user_project = UserProject(
         project_id=uuid_str,
         project_name="Project Test 0",
@@ -300,7 +291,7 @@ def create_mock_workflow_nodes_animal_and_template(project_id: str, persist: boo
 
     # animal input state
     animal_state_node = WorkflowNode(
-        node_id="100000000-0000-0000-0000-000000000001",
+        node_id="100000000-0000-0000-0000-00000000001",
         node_type="state",
         node_label="Input Test Animal State",
         project_id=project_id,
@@ -313,7 +304,7 @@ def create_mock_workflow_nodes_animal_and_template(project_id: str, persist: boo
 
     # instruction template input state
     template_state_node = WorkflowNode(
-        node_id="100000000-0000-0000-0000-000000000002",
+        node_id="100000000-0000-0000-0000-00000000002",
         node_type="state",
         node_label="Input Test Instruction Template State",
         project_id=project_id,
@@ -336,7 +327,7 @@ def create_mock_workflow_nodes_dual_state_merger_and_state(project_id: str, pers
     # setup a dual state merge processor node and then persist it
     dual_state_processor = create_mock_dual_state_processor()
     dual_state_merge_processor_node = WorkflowNode(
-        node_id="200000000-0000-0000-0000-000000000000",
+        node_id="200000000-0000-0000-0000-00000000000",
         node_type="processor_dual_state_merge",
         node_label="Test Dual Merge State Processor (Animal x Instruction Template)",
         project_id=project_id,
@@ -354,7 +345,7 @@ def create_mock_workflow_nodes_dual_state_merger_and_state(project_id: str, pers
     animal_and_template_state_output = create_mock_animal_template_dual_empty_output_state()
     animal_and_template_state_output_id = create_state_id_by_state(animal_and_template_state_output)
     animal_and_template_state_output_node = WorkflowNode(
-        node_id="200000000-0000-0000-0000-000000000001",
+        node_id="200000000-0000-0000-0000-00000000001",
         node_type="state",
         node_label="Test Output State (Animal x Instruction Template)",
         project_id=project_id,
@@ -371,7 +362,7 @@ def create_mock_workflow_nodes_dual_state_merger_and_state(project_id: str, pers
 
 def create_mock_workflow_two_basic_nodes(project_id: str):
     test_node1 = WorkflowNode(
-        node_id="200000000-aabb-0000-0000-00000000000a",
+        node_id="200000000-aabb-0000-0000-0000000000a",
         node_type="state",
         node_label="Test Node 1",
         project_id=project_id,
@@ -383,7 +374,7 @@ def create_mock_workflow_two_basic_nodes(project_id: str):
     )
 
     test_node2 = WorkflowNode(
-        node_id="200000000-aabb-0000-0000-00000000000b",
+        node_id="200000000-aabb-0000-0000-0000000000b",
         node_type="state",
         node_label="Test Node 2",
         project_id=project_id,
@@ -414,6 +405,7 @@ def create_mock_workflow_two_basic_nodes_edges(source_node_id: str, target_node_
 
 
 def create_mock_workflow_nodes(project_id: str):
+
     # create the animal and instruction template state nodes (this includes the actual state object)
     animal_state_node, template_state_node = create_mock_workflow_nodes_animal_and_template(
         project_id=project_id, persist=True)

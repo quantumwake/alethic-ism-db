@@ -4,12 +4,15 @@ create table user_profile (
 );
 
 insert into user_profile (user_id) values ('a57263b6-8869-406b-91e9-bdfb8dfd6785');
+insert into user_profile (user_id) values ('f401db9b-50fd-4960-8661-de3e7c2f9092');
+
 
 drop table if exists user_project cascade;
 create table user_project (
   project_id varchar(36) not null primary key,
   project_name varchar(255) not null,
-  user_id varchar(36) not null references user_profile (user_id)
+  user_id varchar(36) not null references user_profile (user_id),
+  unique (user_id, project_name)
 );
 
 -- select gen_random_uuid();
@@ -178,9 +181,10 @@ create type processor_state_direction AS ENUM (
 
 drop table if exists processor_state;
 create table processor_state (
-    processor_id varchar(36) not null primary key,
+    processor_id varchar(36) not null,
     state_id varchar(36) not null references state (id),
-    direction processor_state_direction not null
+    direction processor_state_direction not null,
+    primary key (processor_id, state_id, direction)
 );
 
 commit;

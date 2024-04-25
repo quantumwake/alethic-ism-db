@@ -7,7 +7,7 @@ from tests.mock_data import (
 
 
 def test_user_projects():
-    user = create_user_profile()
+    user = create_user_profile(user_id="278eea0a-3035-45cf-83c6-5b36b35bc469")
     project1 = create_user_project1(user_id=user.user_id)
     project2 = create_user_project2(user_id=user.user_id)
 
@@ -37,8 +37,8 @@ def test_user_project_states():
 
 
 def test_user_project_delete():
-    user = create_user_profile()
-    project = create_user_project0(user.user_id)
+    user = create_user_profile(user_id="ef775747-9789-416b-b291-b07ac696e935")
+    project = create_user_project0(user_id=user.user_id, project_id="1cdd25ea-9b6d-4c26-a6ca-53f194d9a995")
     fetched_project = db_storage.fetch_user_project(project_id=project.project_id)
 
     assert project.project_name == fetched_project.project_name
@@ -51,8 +51,8 @@ def test_user_project_delete():
 
 
 def test_create_user_project_nodes_and_edges_then_delete():
-    user = create_user_profile()
-    project = create_user_project0(user.user_id)
+    user = create_user_profile(user_id="d906504a-e421-42c8-af94-5a290d403db")
+    project = create_user_project0(user_id=user.user_id, project_id="60dc34fc-01ae-4b10-97cf-7dee4b593994")
 
     source_node, target_node = create_mock_workflow_two_basic_nodes(project_id=project.project_id)
     edge = create_mock_workflow_two_basic_nodes_edges(source_node.node_id, target_node.node_id)

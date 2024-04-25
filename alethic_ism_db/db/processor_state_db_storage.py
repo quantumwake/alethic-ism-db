@@ -4,6 +4,15 @@ from psycopg2 import pool
 from typing import List, Any, Union, Dict, Optional, Type, Callable
 import logging as log
 
+# import state and other models
+from core.base_model import (
+    ProcessorStateDirection,
+    UserProject,
+    UserProfile,
+    WorkflowNode,
+    WorkflowEdge
+)
+
 from core.processor_state import (
     State,
     StateDataKeyDefinition,
@@ -11,18 +20,28 @@ from core.processor_state import (
     StateConfig,
     StateDataColumnDefinition,
     StateDataRowColumnData,
-    StateDataColumnIndex, InstructionTemplate, ProcessorStateDirection
+    StateDataColumnIndex,
+    InstructionTemplate
 )
+
+# import interfaces relevant to the storage subsystem
 from core.processor_state_storage import (
     ProcessorStateStorage,
     Processor,
-    ProcessorState, ProcessorProvider
+    ProcessorState,
+    ProcessorProvider,
+    StateMachineStorage,
+    ProcessorStorage,
+    StateStorage,
+    ProviderStorage,
+    TemplateStorage,
+    WorkflowStorage,
+    UserProjectStorage,
+    UserProfileStorage
 )
-from core.utils import general_utils
-from core.utils.state_utils import validate_processor_status_change
+
 
 from .misc_utils import create_state_id_by_config, create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
-from .models import UserProject, UserProfile, WorkflowNode, WorkflowEdge
 
 logging = log.getLogger(__name__)
 
@@ -32,7 +51,7 @@ class SQLNull:
     pass
 
 
-class BaseDatabaseAccess():
+class BaseDatabaseAccess:
 
     def __init__(self, database_url, incremental: bool = False):
         self.database_url = database_url
@@ -110,7 +129,11 @@ class BaseDatabaseAccess():
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
-                return [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
+                results = [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
+                if results:
+                    return results
+                else:
+                    return None
         except Exception as e:
             logging.error(f"Database query failed: {e}")
             raise
@@ -134,6 +157,9 @@ class BaseDatabaseAccess():
             raise
         finally:
             self.release_connection(conn)
+
+
+class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccess):
 
     def insert_user_profile(self, user_profile: UserProfile):
         conn = self.create_connection()
@@ -161,6 +187,9 @@ class BaseDatabaseAccess():
             self.release_connection(conn)
 
         return user_profile
+
+
+class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
 
     def delete_user_project(self, project_id):
         try:
@@ -224,6 +253,9 @@ class BaseDatabaseAccess():
             },
             mapper=lambda row: UserProject(**row)
         )
+
+
+class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
 
     def delete_workflow_node(self, node_id):
         try:
@@ -359,13 +391,20 @@ class BaseDatabaseAccess():
         return edge
 
 
+class ProviderDatabaseStorage(ProviderStorage, BaseDatabaseAccess):
+    def fetch_processor_providers(self,
+                                  name: str = None,
+                                  version: str = None,
+                                  class_name: str = None,
+                                  user_id: str = None,
+                                  project_id: str = None) -> Optional[List[ProcessorProvider]]:
 
-class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
-
-    def fetch_processor_providers(self, user_id: str = None, project_id: str = None):
         return self.execute_query_many(
             sql="SELECT * FROM processor_provider",
             conditions={
+                'name': name,
+                'version': version,
+                'class_name': class_name,
                 'user_id': user_id,
                 'project_id': project_id
             },
@@ -422,13 +461,30 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def delete_processor_provider(self, provider_id) -> int:
+    def delete_processor_provider(self, user_id: str, provider_id: str, project_id: str = None) -> int:
         conn = self.create_connection()
+
+        if not user_id:
+            raise Exception('Illegal operations, user_id is mandatory when deleting providers')
 
         try:
             with conn.cursor() as cursor:
-                sql = "DELETE FROM processor_provider WHERE id = %s"
-                cursor.execute(sql, [provider_id])
+
+                # user_id is mandatory, cannot delete system level providers
+                sql = """
+                    DELETE FROM processor_provider 
+                     WHERE id = %s 
+                       AND user_id=%s
+                """
+
+                if project_id:
+                    # delete provider with user_id, project_id and provider_idd
+                    sql = f"{sql} AND project_id=%s"
+                    cursor.execute(sql, [provider_id, user_id, project_id])
+                else:
+                    # delete provider only with user_id and provider_id
+                    cursor.execute(sql, [provider_id, user_id])
+
                 count = cursor.rowcount  # Get the number of rows deleted
                 conn.commit()
                 return count  # Return the count of deleted rows
@@ -439,24 +495,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
-        return self.execute_query_many(
-            sql="SELECT * FROM processor_state",
-            conditions={
-                'project_id': project_id,
-                'provider_id': provider_id
-            },
-            mapper=lambda row: Processor(**row))
 
-    def fetch_processor(self, processor_id: str) -> Optional[Processor]:
-        return self.execute_query_one(
-            sql="SELECT * FROM processor",
-            conditions={
-                'processor_id': processor_id
-            },
-            mapper=lambda row: Processor(**row))
+class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
 
-    def fetch_templates(self, project_id: str = None):
+    def fetch_templates(self, project_id: str = None) -> Optional[List[InstructionTemplate]]:
         return self.execute_query_many(
             sql="SELECT * FROM template",
             conditions={
@@ -485,13 +527,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def insert_template(self,
-                        template_id: str = None,
-                        template_path: str = None,
-                        template_content: str = None,
-                        template_type: str = None,
-                        project_id: str = None,
-                        instruction_template: InstructionTemplate = None):
+    def insert_template(self, template: InstructionTemplate = None) -> InstructionTemplate:
 
         try:
             conn = self.create_connection()
@@ -520,26 +556,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                               )
                       """
 
-                if instruction_template:
-                    template_id = instruction_template.template_id
-                    template_path = instruction_template.template_path
-                    template_content = instruction_template.template_content
-                    template_type = instruction_template.template_type
-                    project_id = instruction_template.project_id
-
-                elif not (template_path or template_content or template_type):
-                    raise ValueError(f'must specify either the instruction_template or template_path, '
-                                     f'template_content and template_type')
-
                 # create a template id if it is not specified
-                template_id = template_id if template_id else str(uuid.uuid4())
+                template.template_id = template.template_id if template.template_id else str(uuid.uuid4())
 
                 values = [
-                    template_id,
-                    template_path,
-                    template_content,
-                    template_type,
-                    project_id
+                    template.template_id,
+                    template.template_path,
+                    template.template_content,
+                    template.template_type,
+                    template.project_id
                 ]
                 cursor.execute(sql, values)
 
@@ -550,9 +575,62 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-        return template_id
+        return template
 
-    def fetch_state_data_by_column_id(self, column_id: int):
+
+class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
+
+    def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
+        return self.execute_query_many(
+            sql="SELECT * FROM processor",
+            conditions={
+                'project_id': project_id,
+                'provider_id': provider_id
+            },
+            mapper=lambda row: Processor(**row))
+
+    def fetch_processor(self, processor_id: str) -> Optional[Processor]:
+        return self.execute_query_one(
+            sql="SELECT * FROM processor",
+            conditions={
+                'id': processor_id
+            },
+            mapper=lambda row: Processor(**row))
+
+    def insert_processor(self, processor: Processor) -> Processor:
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""
+                    INSERT INTO processor (id, provider_id, project_id, status)
+                         VALUES (%s, %s, %s, %s)
+                             ON CONFLICT (id) 
+                      DO UPDATE SET 
+                           status = EXCLUDED.status
+                """
+
+                processor.id = processor.id if processor.id else str(uuid.uuid4())
+
+                cursor.execute(sql, [
+                    processor.id,
+                    processor.provider_id,
+                    processor.project_id,
+                    processor.status.value
+                ])
+
+                conn.commit()
+            return processor
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+
+class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
+
+    def fetch_state_data_by_column_id(self, column_id: int) -> Optional[StateDataRowColumnData]:
         conn = self.create_connection()
 
         try:
@@ -577,7 +655,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_state_columns(self, state_id: str) -> Optional[List[StateDataColumnDefinition]]:
+    def fetch_state_columns(self, state_id: str) \
+            -> Optional[Dict[str, StateDataColumnDefinition]]:
         conn = self.create_connection()
 
         try:
@@ -599,18 +678,12 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_states(self,
-                     project_id: str = None,
-                     name: str = None,
-                     version: str = None,
-                     state_type: str = None):
+    def fetch_states(self, project_id: str = None, state_type: str = None) -> Optional[List[State]]:
 
         return self.execute_query_many(
             sql="SELECT * FROM state",
             conditions={
                 'project_id': project_id,
-                'name': name,
-                'version': version,
                 'state_type': state_type
             },
             mapper=lambda row: State(**row))
@@ -689,85 +762,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_processor_state(self,
-                              processor_id: str = None,
-                              state_id: str = None,
-                              direction: ProcessorStateDirection = None) -> Optional[List[ProcessorState]]:
-
-        return self.execute_query_many(
-            sql="SELECT * FROM processor_state",
-            conditions={
-                'processor_id': processor_id,
-                'state_id': state_id,
-                'direction': direction.value if direction else None
-            },
-            mapper=lambda row: ProcessorState(**row))
-
-    def insert_processor_state(self, processor_state: ProcessorState) -> ProcessorState:
-
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = """
-                    INSERT INTO processor_state (
-                        id,
-                        processor_id,
-                        state_id,
-                        direction
-                    )
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (id)
-                    DO NOTHING
-                """
-
-                processor_state.id = processor_state.id if processor_state.id else str(uuid.uuid4())
-
-                cursor.execute(sql, [
-                    processor_state.id,
-                    processor_state.processor_id,
-                    processor_state.state_id,
-                    processor_state.direction.value
-                ])
-
-            conn.commit()
-            return processor_state
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def insert_processor(self, processor: Processor):
-
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = f"""
-                    INSERT INTO processor (id, provider_id, project_id, processor_status)
-                         VALUES (%s, %s, %s, %s)
-                             ON CONFLICT (id) 
-                      DO UPDATE SET 
-                           processor_status = EXCLUDED.processor_status
-                """
-
-                processor.id = processor.id if processor.id else str(uuid.uuid4())
-
-                cursor.execute(sql, [
-                    processor.id,
-                    processor.provider_id,
-                    processor.project_id,
-                    processor.processor_status.value
-                ])
-
-                conn.commit()
-            return processor
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def insert_state_config(self, state: State):
+    def insert_state_config(self, state: State) -> State:
 
         # switch it to a database storage class
         attributes = [
@@ -778,60 +773,52 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             {
                 "name": "name",
                 "data": state.config.name
-            },
-            {
-                "name": "version",
-                "data": state.config.version
             }
         ]
 
         # if the config is LM then we have additional information
         if isinstance(state.config, StateConfigLM):
             config = state.config
-
-            def convert_template(template_path: str, template_type: str):
-                if template_path:
-                    template = general_utils.load_template(template_config_file=template_path)
-                    template_path = template['name']  # change the path to only the name for db storage
-                    template_id = self.insert_template(
-                        template_path=template_path,
-                        template_content=template['template_content'],
-                        template_type=template_type)
-                    return template_id
-                else:
-                    return None
+            #
+            # def convert_template(template_path: str, template_type: str):
+            #     if template_path:
+            #         template = general_utils.load_template(template_config_file=template_path)
+            #         template_path = template['name']  # change the path to only the name for db storage
+            #         template_id = self.insert_template(
+            #             template_path=template_path,
+            #             template_content=template['template_content'],
+            #             template_type=template_type)
+            #         return template_id
+            #     else:
+            #         return None
 
             # if we are loading the template into the database for the first time
             # usually when the storage class is default set to a file instead
-            if 'storage_class' not in config.__dict__ or 'file' == config.storage_class.lower():
-                config.storage_class = 'database'
-                user_template_id = convert_template(config.user_template_path, "user_template")
-                # user_template_path = convert_template(config.user_template_path, "user_template")
-                system_template_id = convert_template(config.system_template_path, "system_template")
+            # if 'storage_class' not in config.__dict__ or 'file' == config.storage_class.lower():
+            #     config.storage_class = 'database'
+            #     user_template_id = convert_template(config.user_template_path, "user_template")
+            #     user_template_path = convert_template(config.user_template_path, "user_template")
+                # system_template_id = convert_template(config.system_template_path, "system_template")
                 # system_template_path = convert_template(config.system_template_path, "system_template")
-            else:
-                # user_template_path = config.user_template_path
-                user_template_id = config.user_template_id
-                # system_template_path = config.system_template_path
-                system_template_id = config.system_template_id
+            # else:
 
             # additional parameters required for config lm
             attributes.extend([
-                {
-                    "name": "provider_name",
-                    "data": config.provider_name
-                },
-                {
-                    "name": "model_name",
-                    "data": config.model_name
-                },
+                # {
+                #     "name": "provider_name",
+                #     "data": config.provider_name
+                # },
+                # {
+                #     "name": "model_name",
+                #     "data": config.model_name
+                # },
                 {
                     "name": "user_template_id",
-                    "data": user_template_id
+                    "data": config.user_template_id
                 },
                 {
                     "name": "system_template_id",
-                    "data": system_template_id
+                    "data": config.system_template_id
                 }
             ])
 
@@ -938,8 +925,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         if not columns:
             logging.warning(f'no data found for state id: {state_id}, '
-                            f'name: {state.config.name}, '
-                            f'version: {state.config.version}')
+                            f'name: {state.config.name}')
             return
 
         conn = self.create_connection()
@@ -1012,7 +998,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_state_key_definition(self, state_id: str, definition_type: str):
+    def fetch_state_key_definition(self, state_id: str, definition_type: str) \
+            -> Optional[List[StateDataKeyDefinition]]:
         conn = self.create_connection()
 
         try:
@@ -1049,38 +1036,41 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def insert_state_primary_key_definition(self, state: State):
+    def insert_state_primary_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition]:
         primary_key_definition = state.config.primary_key
         return self.insert_state_key_definition(
             state=state,
             key_definition_type='primary_key',
             definitions=primary_key_definition)
 
-    def insert_query_state_inheritance_key_definition(self, state: State):
+    def insert_query_state_inheritance_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition]:
         query_state_inheritance = state.config.query_state_inheritance
         return self.insert_state_key_definition(
             state=state,
             key_definition_type='query_state_inheritance',
             definitions=query_state_inheritance)
 
-    def insert_remap_query_state_columns_key_definition(self, state: State):
+    def insert_remap_query_state_columns_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition]:
         remap_query_state_columns = state.config.remap_query_state_columns
         return self.insert_state_key_definition(
             state=state,
             key_definition_type='remap_query_state_columns',
             definitions=remap_query_state_columns)
 
-    def insert_template_columns_key_definition(self, state: State):
+    def insert_template_columns_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition]:
         template_columns = state.config.template_columns
         return self.insert_state_key_definition(
             state=state,
             key_definition_type='template_columns',
             definitions=template_columns)
 
-    def insert_state_key_definition(self,
-                                    state: State,
-                                    key_definition_type: str,
-                                    definitions: List[StateDataKeyDefinition]):
+    def insert_state_key_definition(self, state: State, key_definition_type: str,
+                                    definitions: List[StateDataKeyDefinition]) \
+            -> List[StateDataKeyDefinition]:
 
         state_id = create_state_id_by_state(state=state)
 
@@ -1140,7 +1130,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def fetch_state_column_data_mappings(self, state_id):
+    def fetch_state_column_data_mappings(self, state_id) \
+            -> Optional[Dict[str, StateDataColumnIndex]]:
         conn = self.create_connection()
 
         try:
@@ -1156,7 +1147,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     logging.debug(f'no mapping found for state_id: {state_id}')
                     return
 
-                mappings = {}
+                mappings: Dict[str, StateDataColumnIndex] = {}
                 for row in rows:
                     state_key = row[0]
                     state_index = row[1]
@@ -1240,7 +1231,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def load_state_basic(self, state_id: str):
+    def load_state_basic(self, state_id: str) -> Optional[State]:
         state = self.fetch_state(state_id=state_id)
         if not state:
             return None
@@ -1299,11 +1290,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         return state
 
-    def load_state_columns(self, state_id: str):
+    def load_state_columns(self, state_id: str) \
+            -> Optional[Dict[str, StateDataColumnDefinition]]:
+
         # rebuild the column definition
         return self.fetch_state_columns(state_id=state_id)
 
-    def load_state_data(self, columns: dict):
+    def load_state_data(self, columns: Dict[str, StateDataColumnDefinition]) \
+            -> Optional[Dict[str, StateDataRowColumnData]]:
+
         # rebuild the data values by column and values
         return {
             column: self.fetch_state_data_by_column_id(column_definition.id)
@@ -1311,7 +1306,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             if not column_definition.value  # only return row data that is not a function or a constant
         }
 
-    def load_state_data_mappings(self, state_id: str):
+    def load_state_data_mappings(self, state_id: str) \
+            -> Optional[Dict[str, StateDataColumnIndex]]:
 
         # rebuild the data state mapping
         return self.fetch_state_column_data_mappings(
@@ -1424,7 +1420,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def save_state(self, state: State):
+    def save_state(self, state: State) -> State:
 
         first_time = state.persisted_position <= 0
 
@@ -1455,3 +1451,68 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 self.insert_state(state=state)
 
         return state
+
+
+class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
+
+    def fetch_processor_state(self, processor_id: str = None, state_id: str = None, direction: ProcessorStateDirection = None) \
+            -> Optional[List[ProcessorState]]:
+
+        return self.execute_query_many(
+            sql="SELECT * FROM processor_state",
+            conditions={
+                'processor_id': processor_id,
+                'state_id': state_id,
+                'direction': direction.value if direction else None
+            },
+            mapper=lambda row: ProcessorState(**row))
+
+    def insert_processor_state(self, processor_state: ProcessorState) \
+            -> ProcessorState:
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """
+                    INSERT INTO processor_state (
+                        processor_id,
+                        state_id,
+                        direction
+                    )
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (processor_id, state_id, direction)
+                    DO NOTHING
+                """
+
+                cursor.execute(sql, [
+                    processor_state.processor_id,
+                    processor_state.state_id,
+                    processor_state.direction.value
+                ])
+
+            conn.commit()
+            return processor_state
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+
+class PostgresDatabaseStorage(StateMachineStorage,
+                              StateDatabaseStorage,
+                              ProcessorDatabaseStorage,
+                              ProcessorStateDatabaseStorage,
+                              ProviderDatabaseStorage,
+                              WorkflowDatabaseStorage,
+                              TemplateDatabaseStorage,
+                              UserProfileDatabaseStorage,
+                              UserProjectDatabaseStorage):
+
+    # def __init__(self, database_url: str, incremental: bool = True):
+        # super().__init__(
+        #     database_url=database_url,
+        #     incremental=incremental
+        # )
+
+    pass
