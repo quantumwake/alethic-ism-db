@@ -1,4 +1,4 @@
-from alethic_ism_db.db.embedding.semantic_distance import BasicSemanticSearch
+./from alethic_ism_db.db.embedding.semantic_distance import BasicSemanticSearch
 from alethic_ism_db.db.embedding.syntactic_accuracy import calculate_bleu, calculate_meteor
 
 reference_sentence = 'Cows are thoughtful, intelligent beings with family structures.'

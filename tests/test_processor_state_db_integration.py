@@ -6,9 +6,8 @@ from core.processor_state import (
     StateDataKeyDefinition
 )
 
-from core.processor_state_storage import ProcessorState
 from core.utils.state_utils import validate_processor_status_change
-from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage, PostgresDatabaseStorage
+from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
 
 from tests.mock_data import (
     DATABASE_URL,
@@ -199,6 +198,18 @@ def test_create_processor():
     assert found_processor is not None
     assert found_processor.id is not None
 
+
+def test_fetch_processor_provider():
+    provider = create_mock_processor_provider(
+        project_id="cf482595-7bac-44fb-985c-7cd63c5f49cb",
+        provider_id="cf482595-7bac-44fb-985c-7cd63c5f49cb",
+        user_id="cf482595-7bac-44fb-985c-7cd63c5f49cb"
+    )
+
+    fetched_provider = db_storage.fetch_processor_provider(provider.id)
+    assert fetched_provider.id == provider.id
+    does_not_exist_provider = db_storage.fetch_processor_provider("does/not/exists/provider")
+    assert does_not_exist_provider is None
 
 def test_create_processor_provider():
     # fix the ids so it doesn't interfere with other test cases

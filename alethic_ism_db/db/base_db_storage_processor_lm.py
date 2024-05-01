@@ -5,7 +5,7 @@ from core.base_model import StatusCode
 from core.base_processor import BaseProcessor, ThreadQueueManager
 from core.base_question_answer_processor import BaseProcessorLM
 from core.processor_state import State
-from core.processor_state_storage import ProcessorState, ProcessorStateStorage, StateMachineStorage
+from core.processor_state_storage import StateMachineStorage
 
 logging = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class BaseDatabaseStorageProcessorLM(BaseProcessorLM):
 
     def __init__(self,
                  output_state: State,
-                 processor_state: ProcessorState,
+                 # processor_state: ProcessorState,
                  processors: List[BaseProcessor] = None,
                  storage: StateMachineStorage = None,
                  *args, **kwargs):
@@ -36,7 +36,7 @@ class BaseDatabaseStorageProcessorLM(BaseProcessorLM):
         super().__init__(output_state=output_state, processors=processors, **kwargs)
 
         self.manager = ThreadQueueManager(num_workers=1, processor=self)
-        self.processor_state = processor_state
+        # self.processor_state = processor_state
         self.storage = storage
         logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
 

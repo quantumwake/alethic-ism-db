@@ -392,6 +392,16 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
 
 
 class ProviderDatabaseStorage(ProviderStorage, BaseDatabaseAccess):
+
+    def fetch_processor_provider(self, id: str) -> Optional[ProcessorProvider]:
+        return self.execute_query_one(
+            sql="select * from processor_provider",
+            conditions={
+                "id": id
+            },
+            mapper=lambda row: ProcessorProvider(**row)
+        )
+
     def fetch_processor_providers(self,
                                   name: str = None,
                                   version: str = None,
@@ -1454,6 +1464,23 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
 
 class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
+
+    def fetch_prcoessor_state_details(self, processor_id, state_id, direction: ProcessorStateDirection, provider_id):
+        return self.execute_query_many(
+            sql="""select ps.processor_id,
+                       ps.state_id,
+                       ps.direction,
+                       p.project_id,
+                       p.provider_id
+                  from processor_state ps
+                 inner join processor p
+                    on p.id = ps.processor_id""",
+            conditions={
+                'processor_id': processor_id,
+                'state_id': state_id,
+                'direction': direction.value if direction else None
+            },
+            mapper=lambda row: ProcessorState(**row))
 
     def fetch_processor_state(self, processor_id: str = None, state_id: str = None, direction: ProcessorStateDirection = None) \
             -> Optional[List[ProcessorState]]:
