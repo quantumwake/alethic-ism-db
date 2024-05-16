@@ -1,4 +1,4 @@
-from core.base_model import InstructionTemplate, StatusCode
+from core.base_model import InstructionTemplate, StatusCode, ProcessorProperty
 from core.processor_state import (
     StateConfigLM,
     State,
@@ -73,7 +73,6 @@ def test_state_key_definition_update():
     assert loaded_state_2.config.primary_key[0].callable == state.config.primary_key[0].callable
 
 
-
 def test_state_with_id():
     state = State(
         id="53c7d78d-c90c-48c7-a397-bd4ae882aeb9",
@@ -99,11 +98,10 @@ def test_state_with_id():
 
 
 def test_incremental_save_state():
-
     def check(state1, state2):
         for row_index in range(state1.count):
-            query0 = state1.get_query_state_from_row_index(index=row_index)
-            query1 = state2.get_query_state_from_row_index(index=row_index)
+            query0 = state1.build_query_state_from_row_data(index=row_index)
+            query1 = state2.build_query_state_from_row_data(index=row_index)
 
             compare = {key: value for key, value in query0.items() if key not in query1 or value != query1[key]}
             assert not compare
@@ -128,7 +126,6 @@ def test_incremental_save_state():
 
 
 def test_create_template_newlines():
-
     template_content = """{query}
     
 ```json
@@ -156,7 +153,7 @@ def test_create_template_newlines():
 
 
 def test_create_template():
-    for i in range (9):
+    for i in range(9):
         instruction = InstructionTemplate(
             template_id=f"b071c1ec-c6b7-4516-86c8-839458a0ed2{i}",
             template_path=f"test/template/{i}",
@@ -198,6 +195,46 @@ def test_create_processor():
     assert found_processor is not None
     assert found_processor.id is not None
 
+def test_create_processor_properties():
+    processor = create_mock_processor(processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5",
+                                      provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5")
+
+    assert processor.id is not None
+
+    properties = [ProcessorProperty(processor_id=processor.id, name=f'name {index}', value=f'value {index}') for index in range(10)]
+    saved_properties = db_storage.insert_processor_properties(properties=properties)
+
+    assert len(saved_properties) == len(properties)
+
+    loaded_properties = db_storage.fetch_processor_properties(processor_id=processor.id)
+    for index in range(10):
+        assert loaded_properties[index].processor_id == saved_properties[index].processor_id
+        assert loaded_properties[index].name == saved_properties[index].name
+        assert loaded_properties[index].value == saved_properties[index].value
+
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 0')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 1')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 2')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 3')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 4')
+
+    loaded_processor = db_storage.fetch_processor(processor_id=processor.id)
+    assert len(loaded_processor.properties) == 5
+
+    loaded_properties = db_storage.fetch_processor_properties(processor_id=processor.id)
+    assert len(loaded_properties) == 5
+    for index in range (5, 10):
+        assert f'name {index}' == loaded_properties[index-5].name
+        assert f'value {index}' == loaded_properties[index-5].value
+
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 5')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 6')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 7')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 8')
+    assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 9')
+
+    loaded_properties = db_storage.fetch_processor_properties(processor_id=processor.id)
+    assert not loaded_properties
 
 def test_fetch_processor_provider():
     provider = create_mock_processor_provider(
@@ -210,6 +247,7 @@ def test_fetch_processor_provider():
     assert fetched_provider.id == provider.id
     does_not_exist_provider = db_storage.fetch_processor_provider("does/not/exists/provider")
     assert does_not_exist_provider is None
+
 
 def test_create_processor_provider():
     # fix the ids so it doesn't interfere with other test cases
@@ -231,6 +269,7 @@ def test_create_processor_provider():
 
 
 def test_create_processor_state():
+    # persist some processing input states
     processor_state_1 = create_mock_processor_state_1()
     processor_state_2 = create_mock_processor_state_2()
 
@@ -242,11 +281,30 @@ def test_create_processor_state():
     processor_states_list_1 = db_storage.fetch_processor_state(state_id=processor_state_1.state_id)
     processor_states_list_2 = db_storage.fetch_processor_state(state_id=processor_state_2.state_id)
     assert len(processor_states_list_1) == 1 and len(processor_states_list_2) == 1
+    assert processor_states_list_1[0].state_id == processor_state_1.state_id
+    assert processor_states_list_2[0].state_id == processor_state_2.state_id
 
     processor_states = db_storage.fetch_processor_state(processor_id=processor_state_1.processor_id)
     assert len(processor_states) == 2
 
-    # delete and check whether it was deleted
+    # ensure count values are correctly persisted
+    assert processor_states_list_1[0].count == 10
+    assert processor_states_list_1[0].current_index == 1
+    assert processor_states_list_1[0].maximum_index == 5
+
+    # update the count values to ensure it updates correctly
+    processor_states_list_1[0].count = 11
+    processor_states_list_1[0].current_index = 5
+    processor_states_list_1[0].maximum_index = 6
+
+    saved_processor_state = db_storage.insert_processor_state(processor_state=processor_states_list_1[0])
+    fetched_processed_state = db_storage.fetch_processor_state(processor_id=saved_processor_state.processor_id,
+                                                               state_id=saved_processor_state.state_id,
+                                                               direction=saved_processor_state.direction)
+
+    assert fetched_processed_state[0].count == saved_processor_state.count
+    assert fetched_processed_state[0].current_index == saved_processor_state.current_index
+    assert fetched_processed_state[0].maximum_index == saved_processor_state.maximum_index
 
 
 
@@ -284,7 +342,6 @@ def test_state_persistence():
 
 
 def test_state_config_lm():
-
     lm_new_state = create_mock_random_state()
     assert isinstance(lm_new_state.config, StateConfigLM)
 
@@ -377,4 +434,3 @@ def test_create_state():
     states = db_storage.fetch_states(project_id=user_project.project_id)
     # states = [s for s in states if s['id'] in [state_id_1, state_id_2]]
     assert len(states) == 2
-

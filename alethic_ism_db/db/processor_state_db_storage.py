@@ -10,7 +10,7 @@ from core.base_model import (
     UserProject,
     UserProfile,
     WorkflowNode,
-    WorkflowEdge
+    WorkflowEdge, ProcessorProperty
 )
 
 from core.processor_state import (
@@ -33,13 +33,12 @@ from core.processor_state_storage import (
     StateMachineStorage,
     ProcessorStorage,
     StateStorage,
-    ProviderStorage,
+    ProcessorProviderStorage,
     TemplateStorage,
     WorkflowStorage,
     UserProjectStorage,
     UserProfileStorage
 )
-
 
 from .misc_utils import create_state_id_by_config, create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
 
@@ -79,6 +78,31 @@ class BaseDatabaseAccess:
             self.connection_pool.putconn(conn)
         except Exception as e:
             logging.error(f'failed to release connection as a result of {e}')
+
+    def execute_delete_query(self, sql: str, conditions: Dict[str, Any]) -> int:
+        conn = self.create_connection()
+        params = []
+        where_clauses = []
+        for field, value in conditions.items():
+            if value is not None:
+                if value is SQLNull:
+                    where_clauses.append(f"{field} IS NULL")
+                else:
+                    where_clauses.append(f"{field} = %s")
+                    params.append(value)
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                affected_rows = cursor.rowcount
+                conn.commit()
+                return affected_rows
+        except Exception as e:
+            logging.error(f"Database delete query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
 
     def execute_query_one(self, sql: str, conditions: dict, mapper: Callable) -> Optional[Any]:
         conn = self.create_connection()
@@ -391,7 +415,7 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
         return edge
 
 
-class ProviderDatabaseStorage(ProviderStorage, BaseDatabaseAccess):
+class ProcessorProviderDatabaseStorage(ProcessorProviderStorage, BaseDatabaseAccess):
 
     def fetch_processor_provider(self, id: str) -> Optional[ProcessorProvider]:
         return self.execute_query_one(
@@ -591,7 +615,7 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
 class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
 
     def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
-        return self.execute_query_many(
+        processors = self.execute_query_many(
             sql="SELECT * FROM processor",
             conditions={
                 'project_id': project_id,
@@ -599,13 +623,23 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: Processor(**row))
 
+        for p in processors:
+            p.properties = self.fetch_processor_properties(processor_id=p.id)
+
+        return processors
+
     def fetch_processor(self, processor_id: str) -> Optional[Processor]:
-        return self.execute_query_one(
+        processor = self.execute_query_one(
             sql="SELECT * FROM processor",
             conditions={
                 'id': processor_id
             },
             mapper=lambda row: Processor(**row))
+
+        if processor:
+            processor.properties = self.fetch_processor_properties(processor_id=processor_id)
+
+        return processor
 
     def insert_processor(self, processor: Processor) -> Processor:
 
@@ -636,6 +670,51 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
+    def fetch_processor_properties(self, processor_id: str, name: str = None) -> Optional[List[ProcessorProperty]]:
+        return self.execute_query_many(
+            sql="SELECT * FROM processor_property",
+            conditions={
+                'processor_id': processor_id,
+                'name': name
+            },
+            mapper=lambda row: ProcessorProperty(**row))
+
+    def insert_processor_properties(self, properties: List[ProcessorProperty]) -> List[ProcessorProperty]:
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""
+                    INSERT INTO processor_property (processor_id, name, value)
+                         VALUES (%s, %s, %s)
+                             ON CONFLICT (processor_id, name) 
+                      DO UPDATE SET 
+                           value = EXCLUDED.value
+                """
+
+                for property in properties:
+                    cursor.execute(sql, [
+                        property.processor_id,
+                        property.name,
+                        property.value
+                    ])
+
+                conn.commit()
+            return properties
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def delete_processor_property(self, processor_id: str, name: str) -> int:
+        return self.execute_delete_query(
+            sql="DELETE FROM processor_property",
+            conditions={
+                'processor_id': processor_id,
+                'name': name
+            }
+        )
 
 
 class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
@@ -808,8 +887,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             #     config.storage_class = 'database'
             #     user_template_id = convert_template(config.user_template_path, "user_template")
             #     user_template_path = convert_template(config.user_template_path, "user_template")
-                # system_template_id = convert_template(config.system_template_path, "system_template")
-                # system_template_path = convert_template(config.system_template_path, "system_template")
+            # system_template_id = convert_template(config.system_template_path, "system_template")
+            # system_template_path = convert_template(config.system_template_path, "system_template")
             # else:
 
             # additional parameters required for config lm
@@ -1323,7 +1402,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         return self.fetch_state_column_data_mappings(
             state_id=state_id)
 
-    def load_state(self, state_id: str, load_data: bool = True):
+    def load_state(self, state_id: str, load_data: bool = True) -> Optional[State]:
         # basic state instance
         state = self.load_state_basic(state_id=state_id)
 
@@ -1470,6 +1549,9 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             sql="""select ps.processor_id,
                        ps.state_id,
                        ps.direction,
+                       ps.count,
+                       ps.current_index,
+                       ps.maximum_index,
                        p.project_id,
                        p.provider_id
                   from processor_state ps
@@ -1482,7 +1564,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: ProcessorState(**row))
 
-    def fetch_processor_state(self, processor_id: str = None, state_id: str = None, direction: ProcessorStateDirection = None) \
+    def fetch_processor_state(self, processor_id: str = None, state_id: str = None,
+                              direction: ProcessorStateDirection = None) \
             -> Optional[List[ProcessorState]]:
 
         return self.execute_query_many(
@@ -1504,17 +1587,26 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     INSERT INTO processor_state (
                         processor_id,
                         state_id,
-                        direction
+                        direction,
+                        count,
+                        current_index,
+                        maximum_index
                     )
-                    VALUES (%s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (processor_id, state_id, direction)
-                    DO NOTHING
+                    DO UPDATE SET 
+                        count = EXCLUDED.count, 
+                        current_index = EXCLUDED.current_index, 
+                        maximum_index = EXCLUDED.maximum_index 
                 """
 
                 cursor.execute(sql, [
                     processor_state.processor_id,
                     processor_state.state_id,
-                    processor_state.direction.value
+                    processor_state.direction.value,
+                    processor_state.count,
+                    processor_state.current_index,
+                    processor_state.maximum_index
                 ])
 
             conn.commit()
@@ -1526,20 +1618,29 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
 
-class PostgresDatabaseStorage(StateMachineStorage,
-                              StateDatabaseStorage,
-                              ProcessorDatabaseStorage,
-                              ProcessorStateDatabaseStorage,
-                              ProviderDatabaseStorage,
-                              WorkflowDatabaseStorage,
-                              TemplateDatabaseStorage,
-                              UserProfileDatabaseStorage,
-                              UserProjectDatabaseStorage):
+# class PostgresDatabaseStorage(StateMachineStorage,
+#                               StateDatabaseStorage,
+#                               ProcessorDatabaseStorage,
+#                               ProcessorStateDatabaseStorage,
+#                               ProviderDatabaseStorage,
+#                               WorkflowDatabaseStorage,
+#                               TemplateDatabaseStorage,
+#                               UserProfileDatabaseStorage,
+#                               UserProjectDatabaseStorage):
+#     pass
 
-    # def __init__(self, database_url: str, incremental: bool = True):
-        # super().__init__(
-        #     database_url=database_url,
-        #     incremental=incremental
-        # )
 
-    pass
+class PostgresDatabaseStorage(StateMachineStorage):
+
+    def __init__(self, database_url: str, incremental: bool = True, *args, **kwargs):
+        super().__init__(
+            state_storage=StateDatabaseStorage(database_url=database_url, incremental=incremental),
+            processor_storage=ProcessorDatabaseStorage(database_url=database_url, incremental=incremental),
+            processor_state_storage=ProcessorStateDatabaseStorage(database_url=database_url, incremental=incremental),
+            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url,
+                                                                        incremental=incremental),
+            workflow_storage=WorkflowDatabaseStorage(database_url=database_url, incremental=incremental),
+            template_storage=TemplateDatabaseStorage(database_url=database_url, incremental=incremental),
+            user_profile_storage=UserProfileDatabaseStorage(database_url=database_url, incremental=incremental),
+            user_project_storage=UserProjectDatabaseStorage(database_url=database_url, incremental=incremental),
+        )

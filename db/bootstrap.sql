@@ -55,19 +55,18 @@ create table state
 (
     id varchar(36) not null primary key,
     project_id varchar(36) null references user_project (project_id),
---     name varchar(255) not null,
---     version varchar(255) not null,
     count int not null default 0,
     state_type varchar(255) not null default 'StateConfig'
 );
 
 drop table if exists state_config;
 create table state_config (
-    state_id varchar(255) not null,
+    state_id varchar(255) not null references state(id),
     attribute varchar(255) not null,
     data text,
     primary key (state_id, attribute)
 );
+
 
 drop table if exists state_column_key_definition;
 create table state_column_key_definition(
@@ -154,8 +153,8 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-3.0', 'Anthropic', 'claude-3', 'NaturalLanguageProcessing'),
-('data/transformer/alethic/state-fuser-1.0', 'Alethic', 'state-fuser-1.0', 'DataTransformation'),
-('data/transformer/alethic/state-monte-carlo-1.0', 'Alethic', 'state-monte-carlo-1.0', 'DataTransformation')
+('data/transformers/mixer/state-coalesce-1.0', 'State Coalescer', 'state-coalesce-1.0', 'DataTransformation'),
+('data/transformers/sampler/state-ensemble-1.0', 'State Ensembler', 'state-ensemble-1.0', 'DataTransformation')
 ON CONFLICT DO NOTHING;
 
 drop type if exists processor_status cascade;
@@ -174,6 +173,15 @@ create table processor (
     status processor_status not null
 );
 
+
+drop table if exists processor_property;
+create table processor_property (
+    processor_id varchar(255) not null references processor(id),
+    name varchar(255) not null,
+    value text,
+    primary key (processor_id, name)
+);
+
 drop type if exists processor_state_direction cascade;
 create type processor_state_direction AS ENUM (
        'INPUT', 'OUTPUT'
@@ -184,6 +192,9 @@ create table processor_state (
     processor_id varchar(36) not null,
     state_id varchar(36) not null references state (id),
     direction processor_state_direction not null,
+    current_index int null,
+    maximum_index int null,
+    count int null,
     primary key (processor_id, state_id, direction)
 );
 

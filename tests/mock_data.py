@@ -33,8 +33,8 @@ def create_mock_template_state(persist: bool = False) -> State:
     ]
 
     for query_state in query_templates:
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
+        state.process_and_add_columns(query_state=query_state)
+        state.process_and_add_row_data(query_state=query_state)
 
     if persist:
         db_storage.save_state(state)
@@ -71,8 +71,8 @@ def create_mock_animal_state(state_id: str = None, project_id: str = None, persi
     ]
 
     for query_state in query_states:
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
+        state.process_and_add_columns(query_state=query_state)
+        state.process_and_add_row_data(query_state=query_state)
 
     if persist:
         db_storage.save_state(state)
@@ -157,7 +157,10 @@ def create_mock_processor_state_base(state: State):
     processor_state = ProcessorState(
         processor_id=processor.id,
         state_id=state.id,
-        direction=ProcessorStateDirection.INPUT
+        direction=ProcessorStateDirection.INPUT,
+        count=10,
+        current_index=1,
+        maximum_index=5
     )
 
     return processor_state
@@ -168,7 +171,6 @@ def create_mock_processor_state_1() -> ProcessorState:
     mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f404"
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
     processor_state = create_mock_processor_state_base(mock_state_1)
-    processor_state.id = "c7e14344-3a1f-4cc1-8945-b726e226c860"
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 
@@ -178,7 +180,6 @@ def create_mock_processor_state_2() -> ProcessorState:
     mock_state_2.id = "b7f5e802-3176-46f1-8120-fe9e4704f405"
     mock_state_2 = db_storage.insert_state(state=mock_state_2)
     processor_state = create_mock_processor_state_base(mock_state_2)
-    processor_state.id = "c7e14344-3a1f-4cc1-8945-b726e226c861"
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 
@@ -202,8 +203,8 @@ def create_mock_random_state(state_id: str = None, project_id: str = None) -> St
                 "index": (j + 1) * (i + 1)
             }
 
-            state.apply_columns(query_state=query_state)
-            state.apply_row_data(query_state=query_state)
+            state.process_and_add_columns(query_state=query_state)
+            state.process_and_add_row_data(query_state=query_state)
 
     return state
 
@@ -226,8 +227,8 @@ def create_mock_state_for_incremental_save() -> State:
             "index": f'{i}'
         }
 
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
+        state.process_and_add_columns(query_state=query_state)
+        state.process_and_add_row_data(query_state=query_state)
 
     return state
 
@@ -239,8 +240,8 @@ def create_mock_state_for_incremental_save_add_more_rows(state: State):
             "index": f'{i}'
         }
 
-        state.apply_columns(query_state=query_state)
-        state.apply_row_data(query_state=query_state)
+        state.process_and_add_columns(query_state=query_state)
+        state.process_and_add_row_data(query_state=query_state)
 
     return state
 
