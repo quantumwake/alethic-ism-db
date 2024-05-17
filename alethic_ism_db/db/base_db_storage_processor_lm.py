@@ -2,7 +2,6 @@ from typing import List
 import logging
 
 from core.base_model import StatusCode, ProcessorProvider
-from core.base_processor import ThreadQueueManager
 from core.base_processor_lm import BaseProcessorLM
 from core.processor_state import State
 from core.processor_state_storage import StateMachineStorage
@@ -23,16 +22,7 @@ class BaseDatabaseStorageProcessorLM(BaseProcessorLM):
                          **kwargs)
 
         self.provider = provider
-        self.manager = ThreadQueueManager(num_workers=1, processor=self)
         logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
-
-    def pre_state_apply(self, query_state: dict):
-        return super().pre_state_apply(query_state=query_state)
-
-    def post_state_apply(self, query_state: dict):
-        query_state = super().post_state_apply(query_state=query_state)
-        self.storage.save_state(state=self.output_state)
-        return query_state
 
     def update_current_status(self, new_status: StatusCode):
         raise NotImplemented()

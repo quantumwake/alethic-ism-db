@@ -1,7 +1,7 @@
 import uuid
 
 from psycopg2 import pool
-from typing import List, Any, Union, Dict, Optional, Type, Callable
+from typing import List, Any, Dict, Optional, Callable
 import logging as log
 
 # import state and other models
@@ -282,17 +282,10 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
 class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
 
     def delete_workflow_node(self, node_id):
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = """DELETE FROM workflow_node WHERE node_id = %s"""
-                cursor.execute(sql, [node_id])
-            conn.commit()
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+        return self.execute_delete_query(
+            sql="DELETE FROM workflow_node",
+            conditions={"node_id": node_id}
+        )
 
     def fetch_workflow_nodes(self, project_id: str) -> Optional[List[WorkflowNode]]:
         return self.execute_query_many(
@@ -303,7 +296,7 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
             mapper=lambda row: WorkflowNode(**row)
         )
 
-    def insert_workflow_node(self, node: WorkflowNode):
+    def insert_workflow_node(self, node: WorkflowNode) -> WorkflowNode:
         conn = self.create_connection()
 
         try:
@@ -355,17 +348,13 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
         return node
 
     def delete_workflow_edge(self, source_node_id: str, target_node_id: str):
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = """DELETE FROM workflow_edge WHERE source_node_id = %s and target_node_id = %s"""
-                cursor.execute(sql, [source_node_id, target_node_id])
-            conn.commit()
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+        return self.execute_delete_query(
+            sql="DELETE FROM workflow_node",
+            conditions={
+                "source_node_id": source_node_id,
+                "target_node_id": target_node_id
+            }
+        )
 
     def fetch_workflow_edges(self, project_id: str) -> Optional[List[WorkflowEdge]]:
         sql = """
@@ -380,15 +369,22 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
         params = [project_id, project_id]
         return self.execute_query_fixed(sql, params, lambda row: WorkflowEdge(**row))
 
-    def insert_workflow_edge(self, edge: WorkflowEdge):
+    def insert_workflow_edge(self, edge: WorkflowEdge) -> WorkflowEdge:
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
 
                 sql = """
-                           INSERT INTO workflow_edge (source_node_id, target_node_id, source_handle, target_handle, animated, edge_label)
-                           VALUES (%s, %s, %s, %s, %s, %s)
+                           INSERT INTO workflow_edge (
+                            source_node_id, 
+                            target_node_id, 
+                            source_handle, 
+                            target_handle, 
+                            animated, 
+                            edge_label,
+                            type)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)
                            ON CONFLICT (source_node_id, target_node_id) 
                            DO UPDATE SET 
                             animated = EXCLUDED.animated,
@@ -401,7 +397,8 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
                     edge.source_handle,
                     edge.target_handle,
                     edge.animated,
-                    edge.edge_label
+                    edge.edge_label,
+                    edge.type
                 ]
                 cursor.execute(sql, values)
 
