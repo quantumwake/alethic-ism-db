@@ -3,10 +3,12 @@ from core.processor_state import (
     StateConfigLM,
     State,
     StateConfig,
-    StateDataKeyDefinition
+    StateDataKeyDefinition, StateDataColumnDefinition
 )
 
 from core.utils.state_utils import validate_processor_status_change
+from sympy.testing import pytest
+
 from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
 
 from tests.mock_data import (
@@ -18,7 +20,7 @@ from tests.mock_data import (
     create_mock_random_state,
     create_mock_animal_state,
     create_mock_processor_provider, create_mock_processor_state_2, create_mock_processor, create_user_project0,
-    create_user_profile
+    create_user_profile, create_mock_processor_state_3
 )
 
 
@@ -266,6 +268,96 @@ def test_create_processor_provider():
     db_storage.delete_processor_provider(user_id=provider.user_id, provider_id=provider.id)
     providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
     assert providers is None
+
+def test_create_processor_status_change_status():
+    processor_state = create_mock_processor_state_3()
+
+    saved_processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    assert processor_state.status == saved_processor_state.status
+    assert saved_processor_state.status == StatusCode.CREATED
+
+    fetched_processor_state_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    assert len(fetched_processor_state_list) == 1
+
+    fetched_processor_state = fetched_processor_state_list[0]
+    assert fetched_processor_state.status == StatusCode.CREATED
+
+    fetched_processor_state.status = StatusCode.QUEUED
+    saved_processor_state = db_storage.insert_processor_state(processor_state=fetched_processor_state)
+
+    ## check the status update
+    fetched_processor_state_again_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    fetched_processor_state_again = fetched_processor_state_again_list[0]
+    assert fetched_processor_state_again.status == StatusCode.QUEUED
+
+
+def test_static_columns_with_updated_columns_using_new_query_state():
+    state_id = "1dc0dadf-81e2-4c4e-a315-3f20d8be4d3c"
+    db_storage.delete_state_cascade(state_id=state_id)
+    state = create_mock_random_state(state_id=state_id)
+
+    state.columns = {
+        "test_column_name": StateDataColumnDefinition(
+            name="test_column_name",
+            value="some constant value A",
+            data_type="str",
+            required=True,
+            callable=False
+        )
+    }
+
+    state = db_storage.save_state(state=state)
+
+    state.columns = {
+        "test_column_new_name": StateDataColumnDefinition(
+            id=state.columns['test_column_name'].id,
+            name="test_column_new_name",
+            value="some constant value A new",
+            data_type="str",
+            required=True,
+            callable=False
+        )
+    }
+
+    state = db_storage.save_state(state=state, options={
+        "force_update_column": True
+    })
+
+    fetched_state = db_storage.load_state(state_id=state_id, load_data=False)
+    assert len(fetched_state.columns) == 1
+    assert 'test_column_new_name' in fetched_state.columns
+    column = fetched_state.columns['test_column_new_name']
+
+    assert column.id is not None
+    assert column.name == 'test_column_new_name'
+    assert column.value == 'some constant value A new'
+    assert column.data_type == 'str'
+    assert column.required
+    assert not column.callable
+
+    # test the security of the id, make sure id cannot be changed for a different state id
+
+    new_state_id = "1dc0dadf-81e2-4c4e-a315-3f20d8be4d3d"
+    db_storage.delete_state_cascade(state_id=new_state_id)
+    new_state = create_mock_random_state(state_id=new_state_id)
+
+    # attempt to update the column of the previous state by using a new state id
+    new_state.columns = {
+        "test_column_new_name": StateDataColumnDefinition(
+            id=fetched_state.columns['test_column_new_name'].id,
+            name="hacking attempt test_column_new_name",
+            value="hacking attempt some constant value A new",
+            data_type="str",
+            required=True,
+            callable=False
+        )
+    }
+
+    with pytest.raises(Exception) as exc_info:
+        new_state = db_storage.save_state(state=new_state, options={
+            "force_update_column": True
+        })
+
 
 
 def test_create_processor_state():

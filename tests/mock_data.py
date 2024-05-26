@@ -183,6 +183,14 @@ def create_mock_processor_state_2() -> ProcessorState:
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 
+def create_mock_processor_state_3() -> ProcessorState:
+    mock_state_1 = create_mock_random_state(state_id="b7f5e802-3176-46f1-8120-fe9e4704f406")
+    mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f406"
+    mock_state_1 = db_storage.insert_state(state=mock_state_1)
+    processor_state = create_mock_processor_state_base(mock_state_1)
+    processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    return processor_state
+
 
 def create_mock_random_state(state_id: str = None, project_id: str = None) -> State:
     state = State(
