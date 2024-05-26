@@ -10,7 +10,7 @@ from core.base_model import (
     UserProject,
     UserProfile,
     WorkflowNode,
-    WorkflowEdge, ProcessorProperty
+    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, StatusCode
 )
 
 from core.processor_state import (
@@ -21,7 +21,7 @@ from core.processor_state import (
     StateDataColumnDefinition,
     StateDataRowColumnData,
     StateDataColumnIndex,
-    InstructionTemplate
+    InstructionTemplate, StateConfigCode
 )
 
 # import interfaces relevant to the storage subsystem
@@ -40,7 +40,7 @@ from core.processor_state_storage import (
     UserProfileStorage
 )
 
-from .misc_utils import create_state_id_by_config, create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
+from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
 
 logging = log.getLogger(__name__)
 
@@ -349,7 +349,7 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
 
     def delete_workflow_edge(self, source_node_id: str, target_node_id: str):
         return self.execute_delete_query(
-            sql="DELETE FROM workflow_node",
+            sql="DELETE FROM workflow_edge",
             conditions={
                 "source_node_id": source_node_id,
                 "target_node_id": target_node_id
@@ -861,43 +861,25 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 "data": state.config.name
             }
         ]
+        config = state.config
 
         # if the config is LM then we have additional information
-        if isinstance(state.config, StateConfigLM):
-            config = state.config
-            #
-            # def convert_template(template_path: str, template_type: str):
-            #     if template_path:
-            #         template = general_utils.load_template(template_config_file=template_path)
-            #         template_path = template['name']  # change the path to only the name for db storage
-            #         template_id = self.insert_template(
-            #             template_path=template_path,
-            #             template_content=template['template_content'],
-            #             template_type=template_type)
-            #         return template_id
-            #     else:
-            #         return None
-
-            # if we are loading the template into the database for the first time
-            # usually when the storage class is default set to a file instead
-            # if 'storage_class' not in config.__dict__ or 'file' == config.storage_class.lower():
-            #     config.storage_class = 'database'
-            #     user_template_id = convert_template(config.user_template_path, "user_template")
-            #     user_template_path = convert_template(config.user_template_path, "user_template")
-            # system_template_id = convert_template(config.system_template_path, "system_template")
-            # system_template_path = convert_template(config.system_template_path, "system_template")
-            # else:
+        if isinstance(state.config, StateConfigCode):
+            # additional parameters required for config code
+            attributes.extend([
+                {
+                    "name": "template_id",
+                    "data": config.template_id
+                },
+                {
+                    "name": "language",
+                    "data": config.language
+                }
+            ])
+        elif isinstance(state.config, StateConfigLM):
 
             # additional parameters required for config lm
             attributes.extend([
-                # {
-                #     "name": "provider_name",
-                #     "data": config.provider_name
-                # },
-                # {
-                #     "name": "model_name",
-                #     "data": config.model_name
-                # },
                 {
                     "name": "user_template_id",
                     "data": config.user_template_id
@@ -915,7 +897,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             logging.info(f'no additional attributes specified for '
                          f'state_id: {state_id}, name: {state.config.name}, '
                          f'version: {state.config.version}')
-            return
+            return state
 
         conn = self.create_connection()
 
@@ -956,15 +938,18 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def insert_state_columns(self, state: State):
+    def insert_state_columns(self, state: State, force_update: bool = False):
         state_id = create_state_id_by_state(state)
-        existing_columns = self.fetch_state_columns(state_id=state_id)
+        # existing_columns = self.fetch_state_columns(state_id=state_id)
 
-        create_columns = {column: header
-                          for column, header in state.columns.items()
-                          if column not in existing_columns}
+        # the columns to create and or updates
+        create_or_update_columns_definitions = {
+            column_name: column_definition
+            for column_name, column_definition in state.columns.items()
+            if column_definition.id is None
+        } if not force_update else state.columns
 
-        if not create_columns:
+        if not create_or_update_columns_definitions:
             return
 
         conn = self.create_connection()
@@ -974,19 +959,45 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 hash_key = create_state_id_by_state(state=state)
 
                 sql = f"""
-                insert into state_column (
-                    state_id, name, data_type, "null", 
-                    min_length, max_length, dimensions, value, 
+                INSERT INTO state_column (
+                    id,
+                    state_id, 
+                    name, 
+                    data_type, 
+                    required, 
+                    callable, 
+                    min_length, 
+                    max_length, 
+                    dimensions, 
+                    value, 
                     source_column_name)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                    COALESCE(validate_column_id(%s, %s), nextval('state_column_id_seq'::regclass)),
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id, state_id)
+                    DO UPDATE SET 
+                        name = EXCLUDED.name, 
+                        data_type = EXCLUDED.data_type,
+                        required = EXCLUDED.required, 
+                        callable = EXCLUDED.callable,
+                        min_length = EXCLUDED.min_length,
+                        max_length = EXCLUDED.max_length,
+                        value = EXCLUDED.value
+                RETURNING id 
                 """
 
-                for column, column_definition in create_columns.items():
+                for column, column_definition in create_or_update_columns_definitions.items():
                     values = [
+                        # actual values for the WITH statement in the sql above
+                        column_definition.id,   # first id within the WITH statement
+                        state_id,               # first state_id within the WITH statement
+
+                        # actual values for the insert or update
                         state_id,
                         column_definition.name,
                         column_definition.data_type,
-                        column_definition.null,
+                        column_definition.required,
+                        column_definition.callable,
                         column_definition.min_length,
                         column_definition.max_length,
                         column_definition.dimensions,
@@ -995,6 +1006,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                     ]
 
                     cursor.execute(sql, values)
+
+                    # fetch the id from the returning sql statement
+                    if not column_definition.id:
+                        column_definition.id = cursor.fetchone()[0]
 
             conn.commit()
         except Exception as e:
@@ -1360,6 +1375,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 **general_attributes,
                 **config_attributes
             )
+        elif 'StateConfigCode' == state_type:
+            config = StateConfigCode(
+                **general_attributes,
+                **config_attributes
+            )
         else:
             raise NotImplementedError(f'unsupported type {state_type}')
 
@@ -1506,7 +1526,18 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def save_state(self, state: State) -> State:
+    def update_state_count(self, state: State) -> State:
+        return self.insert_state(state=state)
+
+    def save_state(self, state: State, options: dict = None) -> State:
+
+        def fetch_option(name: str, default: Any = None):
+            if not options:
+                return default
+
+            return options[name] if name in options else default
+
+        force_update_column = fetch_option('force_update_column', False)
 
         first_time = state.persisted_position <= 0
 
@@ -1515,7 +1546,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         if not self.incremental or first_time:
             state = self.insert_state(state=state)
             self.insert_state_config(state=state)
-            self.insert_state_columns(state=state)
+            self.insert_state_columns(state=state, force_update=force_update_column)
             self.insert_state_columns_data(state=state, incremental=False)
             self.insert_state_column_data_mapping(state=state)
             self.insert_state_primary_key_definition(state=state)
@@ -1549,6 +1580,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                        ps.count,
                        ps.current_index,
                        ps.maximum_index,
+                       ps.status as state_status
                        p.project_id,
                        p.provider_id
                   from processor_state ps
@@ -1559,10 +1591,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 'state_id': state_id,
                 'direction': direction.value if direction else None
             },
-            mapper=lambda row: ProcessorState(**row))
+            mapper=lambda row: ProcessorStateDetail(**row))
 
     def fetch_processor_state(self, processor_id: str = None, state_id: str = None,
-                              direction: ProcessorStateDirection = None) \
+                              direction: ProcessorStateDirection = None,
+                              status: StatusCode = None) \
             -> Optional[List[ProcessorState]]:
 
         return self.execute_query_many(
@@ -1570,7 +1603,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             conditions={
                 'processor_id': processor_id,
                 'state_id': state_id,
-                'direction': direction.value if direction else None
+                'direction': direction.value if direction else None,
+                'status': status.value if status else None
             },
             mapper=lambda row: ProcessorState(**row))
 
@@ -1585,14 +1619,16 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                         processor_id,
                         state_id,
                         direction,
+                        status,
                         count,
                         current_index,
                         maximum_index
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (processor_id, state_id, direction)
                     DO UPDATE SET 
                         count = EXCLUDED.count, 
+                        status = EXCLUDED.status,
                         current_index = EXCLUDED.current_index, 
                         maximum_index = EXCLUDED.maximum_index 
                 """
@@ -1601,6 +1637,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     processor_state.processor_id,
                     processor_state.state_id,
                     processor_state.direction.value,
+                    processor_state.status.value,
                     processor_state.count,
                     processor_state.current_index,
                     processor_state.maximum_index
@@ -1613,19 +1650,6 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
-
-
-# class PostgresDatabaseStorage(StateMachineStorage,
-#                               StateDatabaseStorage,
-#                               ProcessorDatabaseStorage,
-#                               ProcessorStateDatabaseStorage,
-#                               ProviderDatabaseStorage,
-#                               WorkflowDatabaseStorage,
-#                               TemplateDatabaseStorage,
-#                               UserProfileDatabaseStorage,
-#                               UserProjectDatabaseStorage):
-#     pass
-
 
 class PostgresDatabaseStorage(StateMachineStorage):
 

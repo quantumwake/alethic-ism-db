@@ -1,3 +1,4 @@
+import ast
 import logging as log
 import math
 import os
@@ -6,7 +7,7 @@ import psycopg2
 
 from typing import List, Any, Dict
 from .embedding.embedding_utils import calculate_embeddings
-from core.base_processor import BaseProcessor, ThreadQueueManager
+from core.base_processor import BaseProcessor
 from core.utils.general_utils import (
     clean_string_for_ddl_naming,
     higher_order_routine,
@@ -145,7 +146,7 @@ def build_query_state_from_config(state: State, function_columns: callable):
     }
 
     for column, column_definition in columns.items():
-        column_definition.value = eval(column_definition.value)
+        column_definition.value = ast.literal_eval(column_definition.value)
 
     return columns
 
@@ -178,7 +179,7 @@ class BaseStateDatabaseProcessor(BaseProcessor):
                  *args, **kwargs):
 
         super().__init__(state=state, processors=processors, **kwargs)
-        self.manager = ThreadQueueManager(num_workers=10)
+        # self.manager = ThreadQueueManager(num_workers=10)
         self.additional_values_func = additional_values_func
         self.database_url = database_url
 

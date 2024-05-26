@@ -1,4 +1,3 @@
-from typing import List
 import logging
 
 from core.base_model import StatusCode, ProcessorProvider
@@ -11,18 +10,19 @@ logging = logging.getLogger(__name__)
 
 class BaseDatabaseStorageProcessorLM(BaseProcessorLM):
 
-    def __init__(self,
-                 state_machine_storage: StateMachineStorage,
-                 output_state: State,
-                 provider: ProcessorProvider,
-                 *args, **kwargs):
-
-        super().__init__(state_machine_storage=state_machine_storage,
-                         output_state=output_state,
-                         **kwargs)
-
-        self.provider = provider
-        logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
+    # def __init__(self,
+    #              state_machine_storage: StateMachineStorage,
+    #              output_state: State,
+    #              provider: ProcessorProvider,
+    #              *args, **kwargs):
+    #
+    #     super().__init__(state_machine_storage=state_machine_storage,
+    #                      output_state=output_state,
+    #                      provider=provider,
+    #                      **kwargs)
+    # self.provider = provider
+    #
+    #     logging.info(f'extended instruction state machine: {type(self)} with config {self.config}')
 
     def update_current_status(self, new_status: StatusCode):
         raise NotImplemented()
