@@ -21,7 +21,6 @@ from core.processor_state import (
     StateConfigDB,
     StateDataKeyDefinition,
     StateConfig,
-    get_column_state_value,
     implicit_count_with_force_count,
     # find_state_files
 )
@@ -320,7 +319,8 @@ class BaseStateDatabaseProcessor(BaseProcessor):
 
         def parse_column_value(col_name: str, col_val: Any):
             # if not isinstance(col_val, str):
-            col_val = get_column_state_value(col_val, query_state=input_query_state)
+            raise NotImplementedError()
+            # col_val = get_column_state_value(col_val, query_state=input_query_state)
 
             if not col_val:
                 return None

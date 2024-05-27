@@ -23,6 +23,84 @@ from tests.mock_data import (
     create_user_profile, create_mock_processor_state_3
 )
 
+state_id = "fa000000-0000-0000-0000-0000000000fa"
+
+
+def test_state_key_definition_delete():
+    state_id = "fa000000-0000-0000-0000-0000000000fa"
+    db_storage.delete_state_cascade(state_id=state_id)
+
+    state = State(
+        id=state_id,
+        config=StateConfig(
+            name="hello world",
+            primary_key=[
+                StateDataKeyDefinition(
+                    name="test key 1",
+                    alias="test alias",
+                    required=False,
+                    callable=False
+                ),
+                StateDataKeyDefinition(
+                    name="test key 2",
+                    alias="test alias",
+                    required=False,
+                    callable=False
+                )
+            ],
+            query_state_inheritance=[
+                StateDataKeyDefinition(
+                    name="test key test",
+                    alias="test alias",
+                    required=False,
+                    callable=False
+                )
+            ]
+        )
+    )
+
+    # check to make sure everything was saved correctly
+    saved_state = db_storage.save_state(state=state)
+    fetched_state = db_storage.load_state(state_id=state.id)
+    assert len(fetched_state.config.primary_key) == 2
+    assert len(fetched_state.config.query_state_inheritance) == 1
+
+
+    # delete the first primary key and then check to make sure everything is loaded correctly
+    count = db_storage.delete_state_config_key_definition(
+        state_id=state.id,
+        definition_type="primary_key",
+        definition_id=fetched_state.config.primary_key[0].id
+    )
+    assert count == 1
+
+    fetched_state = db_storage.load_state(state_id=state.id)
+    assert len(fetched_state.config.primary_key) == 1
+    assert len(fetched_state.config.query_state_inheritance) == 1
+
+    # delete the first query_state_inheritance key definition, then check again to make sure things are loaded correctly
+    count = db_storage.delete_state_config_key_definition(
+        state_id=state.id,
+        definition_type="query_state_inheritance",
+        definition_id=fetched_state.config.query_state_inheritance[0].id
+    )
+    assert count == 1
+
+    fetched_state = db_storage.load_state(state_id=state.id)
+    assert len(fetched_state.config.primary_key) == 1
+    assert not fetched_state.config.query_state_inheritance
+
+    # delete now the final and last primary_key and everything should be returning None now, not even an empty list
+    count = db_storage.delete_state_config_key_definition(
+        state_id=state.id,
+        definition_type="primary_key",
+        definition_id=fetched_state.config.primary_key[0].id
+    )
+    assert count == 1
+
+    fetched_state = db_storage.load_state(state_id=state.id)
+    assert not fetched_state.config.primary_key
+    assert not fetched_state.config.query_state_inheritance
 
 def test_state_key_definition_update():
     state_id = "00000000-0000-0000-0000-0000000000fe"

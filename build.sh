@@ -5,12 +5,14 @@ META_YAML_PATH="./recipe"
 LOCAL_CHANNEL_PATH=~/miniconda3/envs/local_channel
 SKIP_PURGE=false
 VERBOSE=false
+OFFLINE=true
 
 # Parse optional arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --meta-yaml-path) META_YAML_PATH="$2"; shift ;;
         --local-channel-path) LOCAL_CHANNEL_PATH="$2"; shift ;;
+        --offline) SKIP_PURGE=true ;;
         --skip-purge) SKIP_PURGE=true ;;
         --verbose) VERBOSE=true ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
@@ -27,6 +29,7 @@ log() {
 
 log "Using META_YAML_PATH: $META_YAML_PATH"
 log "Using LOCAL_CHANNEL_PATH: $LOCAL_CHANNEL_PATH"
+log "Offline: $OFFLINE"
 
 # Update build number
 build_no=$(cat "$META_YAML_PATH/meta.yaml" | awk '/number: [0-9]+/ {printf("%s+1\n", $2)}')
@@ -47,5 +50,6 @@ else
 fi
 
 # Build to a local channel
+#conda build "$META_YAML_PATH" --offline $OFFLINE --output-folder "$LOCAL_CHANNEL_PATH"
 conda build "$META_YAML_PATH" --output-folder "$LOCAL_CHANNEL_PATH"
 conda index "$LOCAL_CHANNEL_PATH"

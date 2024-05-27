@@ -1184,7 +1184,13 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql_insert = """
-                    INSERT INTO state_column_key_definition (state_id, name, alias, required, callable, definition_type)
+                    INSERT INTO state_column_key_definition (
+                        state_id, 
+                        name, 
+                        alias, 
+                        required, 
+                        callable, 
+                        definition_type)
                     VALUES (%(state_id)s, %(name)s, %(alias)s, %(required)s, %(callable)s, %(definition_type)s)
                     RETURNING id
                 """
@@ -1409,7 +1415,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         return {
             column: self.fetch_state_data_by_column_id(column_definition.id)
             for column, column_definition in columns.items()
-            if not column_definition.value  # only return row data that is not a function or a constant
+            # if not column_definition.value  # TODO REMOVE since we now store all constant and expression values in .data[col].values[]  ...old: only return row data that is not a function or a constant
         }
 
     def load_state_data_mappings(self, state_id: str) \
@@ -1511,6 +1517,19 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
+    def delete_state_config_key_definition(self, state_id: str, definition_type: str, definition_id: int) -> int:
+        if not (state_id or definition_type or definition_id):
+            raise PermissionError(f'state_id, definition_type and definition_id must be specified when deleting a state config key definition')
+
+        return self.execute_delete_query(
+            sql="DELETE FROM state_column_key_definition",
+            conditions={
+                "state_id": state_id,
+                "definition_type": definition_type,
+                "id": definition_id
+            }
+        )
 
     def delete_state_config_key_definitions(self, state_id):
 

@@ -85,13 +85,16 @@ create table state_column (
     state_id varchar(36) not null references state(id),
     name varchar(255) not null,
     data_type varchar(64) default 'str',
-    "null" boolean default true,
+    required boolean default true,
+    callable boolean default false,
     min_length int default 0,
     max_length int default 255,
     dimensions int default 384,
     value varchar(255),
     source_column_name varchar(255)
 );
+
+create unique index state_column_unique_key on state_column (id, state_id);
 
 drop table if exists state_column_data;
 create table state_column_data
@@ -149,12 +152,14 @@ CREATE TABLE processor_provider (
 );
 
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
+('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
 ('language/models/openai/gpt-4-1106-preview', 'OpenAI', 'gpt-4-1106-preview', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
-('language/models/anthropic/claude-3.0', 'Anthropic', 'claude-3', 'NaturalLanguageProcessing'),
-('data/transformers/mixer/state-coalesce-1.0', 'State Coalescer', 'state-coalesce-1.0', 'DataTransformation'),
-('data/transformers/sampler/state-ensemble-1.0', 'State Ensembler', 'state-ensemble-1.0', 'DataTransformation')
+('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),
+('data/transformers/mixer/state-coalescer-1.0', 'State Coalescer', 'state-coalescer-1.0', 'DataTransformation'),
+('data/transformers/sampler/state-ensembler-1.0', 'State Ensembler', 'state-ensembler-1.0', 'DataTransformation'),
+('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing')
 ON CONFLICT DO NOTHING;
 
 drop type if exists processor_status cascade;
@@ -199,3 +204,36 @@ create table processor_state (
 );
 
 commit;
+
+
+CREATE OR REPLACE VIEW state_column_data_view
+AS
+SELECT sc.*, sd.* FROM state_column sc
+ LEFT OUTER JOIN state_column_data sd
+   ON sc.id = sd.column_id
+ORDER BY state_id, data_index, column_id;
+
+--- VALIDATION FUNCTION FOR COLUMN ID
+DROP FUNCTION validate_column_id;
+CREATE OR REPLACE FUNCTION validate_column_id(new_id BIGINT, new_state_id VARCHAR)
+RETURNS BIGINT AS $$
+DECLARE
+    result BIGINT;
+BEGIN
+    IF new_id IS NOT NULL THEN
+        -- Check if the provided id exists with the given state_id
+        IF EXISTS (SELECT 1 FROM state_column WHERE id = new_id AND state_id = new_state_id) THEN
+            result := new_id;
+        -- Check if the provided id exists with a different state_id
+        ELSIF EXISTS (SELECT 1 FROM state_column WHERE id = new_id) THEN
+            RAISE EXCEPTION 'ILLEGAL ID: The provided id already exists with a different state_id';
+        ELSE
+            result := NULL;
+        END IF;
+    ELSE
+        result := NULL;
+    END IF;
+
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
