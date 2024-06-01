@@ -1711,7 +1711,7 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess)
                         data
                     )
                     VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING log_id 
+                    RETURNING log_id, log_time 
                 """
 
                 cursor.execute(sql, [
@@ -1724,9 +1724,9 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess)
                 ])
 
                 # fetch the id from the returning sql statement
-                monitor_log_event.log_id = cursor.fetchone()[0] \
-                    if not monitor_log_event.log_id \
-                    else monitor_log_event.log_id
+                returned = cursor.fetchone()
+                monitor_log_event.log_id = returned[0]          # serial id / sequence
+                monitor_log_event.log_time = returned[1]        # log time
 
             conn.commit()
             return monitor_log_event

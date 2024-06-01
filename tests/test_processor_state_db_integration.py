@@ -534,6 +534,7 @@ def test_monitor_log_event_empty_data():
 
     saved_log_1 = db_storage.insert_monitor_log_event(monitor_log_event=log1)
     assert saved_log_1.log_id
+    assert saved_log_1.log_time
 
 
 def test_monitor_log_event_with_exception_and_data():
@@ -546,10 +547,13 @@ def test_monitor_log_event_with_exception_and_data():
 
     saved_log_2 = db_storage.insert_monitor_log_event(monitor_log_event=log2)
     assert saved_log_2.log_id
+    assert saved_log_2.log_time
 
     fetched_logs = db_storage.fetch_monitor_log_events(internal_reference_id=-10000)
     assert len(fetched_logs) > 0     # TODO this is going to keep increasing
 
+    for log in fetched_logs:
+        assert log.log_time
 
 def test_state_persistence():
     state = create_mock_random_state()

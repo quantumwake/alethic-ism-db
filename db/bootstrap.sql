@@ -38,6 +38,7 @@ create table workflow_edge (
     target_handle varchar(255) null,
     animated bool not null default true,
     edge_label varchar(255) null,
+    type varchar(255) not null default 'default',
     primary key (source_node_id, target_node_id)
 );
 
@@ -164,10 +165,9 @@ ON CONFLICT DO NOTHING;
 
 drop type if exists processor_status cascade;
 create type processor_status AS ENUM (
-       'CREATED', 'QUEUED',
-       'RUNNING', 'TERMINATED',
-       'STOPPED', 'COMPLETED',
-       'FAILED'
+       'CREATED', 'ROUTE', 'ROUTED',
+       'QUEUED', 'RUNNING', 'COMPLETED',
+       'TERMINATE', 'STOPPED', 'FAILED'
 );
 
 drop table if exists processor cascade;
@@ -194,17 +194,31 @@ create type processor_state_direction AS ENUM (
 
 drop table if exists processor_state;
 create table processor_state (
+    internal_id serial not null,
     processor_id varchar(36) not null,
     state_id varchar(36) not null references state (id),
     direction processor_state_direction not null,
+    status processor_status not null,
+    count int null,
     current_index int null,
     maximum_index int null,
-    count int null,
-    primary key (processor_id, state_id, direction)
+    primary key (processor_id, state_id, direction),
+    unique (internal_id)
 );
 
 commit;
 
+drop table if exists monitor_log_event;
+create table monitor_log_event (
+    log_id serial not null primary key,
+    log_type varchar(255) not null, -- TODO should be an enum of type log_type
+    log_time timestamp not null default current_timestamp,
+    internal_reference_id int null, -- an internal id depending on what is being monitored, e.g. a processor_state internal_id
+    user_id varchar(36) null,       -- this is useful when processor_state_id is not defined
+    project_id varchar(36) null,    -- this is useful when processor_state_id is not defined
+    exception text null,
+    data text null
+);
 
 CREATE OR REPLACE VIEW state_column_data_view
 AS
