@@ -1,4 +1,4 @@
-from core.base_model import InstructionTemplate, StatusCode, ProcessorProperty
+from core.base_model import InstructionTemplate, ProcessorStatusCode, ProcessorProperty, MonitorLogEvent
 from core.processor_state import (
     StateConfigLM,
     State,
@@ -20,7 +20,8 @@ from tests.mock_data import (
     create_mock_random_state,
     create_mock_animal_state,
     create_mock_processor_provider, create_mock_processor_state_2, create_mock_processor, create_user_project0,
-    create_user_profile, create_mock_processor_state_3
+    create_user_profile,
+    create_mock_processor_state_3
 )
 
 state_id = "fa000000-0000-0000-0000-0000000000fa"
@@ -65,7 +66,6 @@ def test_state_key_definition_delete():
     assert len(fetched_state.config.primary_key) == 2
     assert len(fetched_state.config.query_state_inheritance) == 1
 
-
     # delete the first primary key and then check to make sure everything is loaded correctly
     count = db_storage.delete_state_config_key_definition(
         state_id=state.id,
@@ -101,6 +101,7 @@ def test_state_key_definition_delete():
     fetched_state = db_storage.load_state(state_id=state.id)
     assert not fetched_state.config.primary_key
     assert not fetched_state.config.query_state_inheritance
+
 
 def test_state_key_definition_update():
     state_id = "00000000-0000-0000-0000-0000000000fe"
@@ -259,8 +260,11 @@ def test_create_template():
 
 def test_create_processor():
     # fix the ids to avoid interference with other tests
-    processor = create_mock_processor(processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4",
-                                      provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4")
+    processor = create_mock_processor(
+        processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4",
+        provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e4"
+    )
+
     assert processor.id is not None
 
     processors = db_storage.fetch_processors()
@@ -268,16 +272,19 @@ def test_create_processor():
 
     assert len(processors) == 1
     assert processors[0].id == processor.id
-    assert processors[0].status == StatusCode.CREATED
+    assert processors[0].status == ProcessorStatusCode.CREATED
     assert processors[0].provider_id == processor.provider_id
 
     found_processor = db_storage.fetch_processor(processor_id=processor.id)
     assert found_processor is not None
     assert found_processor.id is not None
 
+
 def test_create_processor_properties():
-    processor = create_mock_processor(processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5",
-                                      provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5")
+    processor = create_mock_processor(
+        processor_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5",
+        provider_id="ecd6cba5-a111-4698-9bbd-2c0186dff4e5"
+    )
 
     assert processor.id is not None
 
@@ -347,26 +354,28 @@ def test_create_processor_provider():
     providers = db_storage.fetch_processor_providers(user_id=provider.user_id)
     assert providers is None
 
+
 def test_create_processor_status_change_status():
-    processor_state = create_mock_processor_state_3()
+    processor_state = create_mock_processor_state_3(processor_id="test_processor_uuid_id")
 
     saved_processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    assert processor_state.internal_id > 0
     assert processor_state.status == saved_processor_state.status
-    assert saved_processor_state.status == StatusCode.CREATED
+    assert saved_processor_state.status == ProcessorStatusCode.CREATED
 
     fetched_processor_state_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
     assert len(fetched_processor_state_list) == 1
 
     fetched_processor_state = fetched_processor_state_list[0]
-    assert fetched_processor_state.status == StatusCode.CREATED
+    assert fetched_processor_state.status == ProcessorStatusCode.CREATED
 
-    fetched_processor_state.status = StatusCode.QUEUED
+    fetched_processor_state.status = ProcessorStatusCode.QUEUED
     saved_processor_state = db_storage.insert_processor_state(processor_state=fetched_processor_state)
 
-    ## check the status update
+    # check the status update
     fetched_processor_state_again_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
     fetched_processor_state_again = fetched_processor_state_again_list[0]
-    assert fetched_processor_state_again.status == StatusCode.QUEUED
+    assert fetched_processor_state_again.status == ProcessorStatusCode.QUEUED
 
 
 def test_static_columns_with_updated_columns_using_new_query_state():
@@ -436,8 +445,6 @@ def test_static_columns_with_updated_columns_using_new_query_state():
             "force_update_column": True
         })
 
-
-
 def test_create_processor_state():
     # persist some processing input states
     processor_state_1 = create_mock_processor_state_1()
@@ -477,17 +484,32 @@ def test_create_processor_state():
     assert fetched_processed_state[0].maximum_index == saved_processor_state.maximum_index
 
 
-
 def test_processor_state_transition():
-    validate_processor_status_change(current_status=StatusCode.CREATED, new_status=StatusCode.QUEUED)
-    validate_processor_status_change(current_status=StatusCode.QUEUED, new_status=StatusCode.RUNNING)
-    validate_processor_status_change(current_status=StatusCode.RUNNING, new_status=StatusCode.TERMINATED)
-    validate_processor_status_change(current_status=StatusCode.RUNNING, new_status=StatusCode.COMPLETED)
+
+    validate_processor_status_change(
+        current_status=ProcessorStatusCode.CREATED,
+        new_status=ProcessorStatusCode.QUEUED
+    )
+
+    validate_processor_status_change(
+        current_status=ProcessorStatusCode.QUEUED,
+        new_status=ProcessorStatusCode.RUNNING
+    )
+
+    validate_processor_status_change(
+        current_status=ProcessorStatusCode.RUNNING,
+        new_status=ProcessorStatusCode.TERMINATE
+    )
+
+    validate_processor_status_change(
+        current_status=ProcessorStatusCode.RUNNING,
+        new_status=ProcessorStatusCode.COMPLETED
+    )
 
     try:
         validate_processor_status_change(
-            current_status=StatusCode.TERMINATED,
-            new_status=StatusCode.STOPPED
+            current_status=ProcessorStatusCode.TERMINATE,
+            new_status=ProcessorStatusCode.STOPPED
         )
 
         assert False is True
@@ -496,17 +518,42 @@ def test_processor_state_transition():
 
     try:
         validate_processor_status_change(
-            current_status=StatusCode.TERMINATED,
-            new_status=StatusCode.FAILED
+            current_status=ProcessorStatusCode.TERMINATED,
+            new_status=ProcessorStatusCode.FAILED
         )
 
         assert True
     except:
         assert False is True
+
+
+def test_monitor_log_event_empty_data():
+    log1 = MonitorLogEvent(
+        log_type='test log type'
+    )
+
+    saved_log_1 = db_storage.insert_monitor_log_event(monitor_log_event=log1)
+    assert saved_log_1.log_id
+
+
+def test_monitor_log_event_with_exception_and_data():
+    log2 = MonitorLogEvent(
+        log_type='test log type',
+        internal_reference_id=-10000,
+        exception=str(ValueError(f'some validation error handled')),
+        data='{ "some":" "data" }'
+    )
+
+    saved_log_2 = db_storage.insert_monitor_log_event(monitor_log_event=log2)
+    assert saved_log_2.log_id
+
+    fetched_logs = db_storage.fetch_monitor_log_events(internal_reference_id=-10000)
+    assert len(fetched_logs) > 0     # TODO this is going to keep increasing
 
 
 def test_state_persistence():
     state = create_mock_random_state()
+
     assert state != None
     db_storage.save_state(state=state)
 

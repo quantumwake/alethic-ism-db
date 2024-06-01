@@ -1,7 +1,12 @@
 import os
 import random
 
-from core.base_model import StatusCode, ProcessorStateDirection, UserProfile, UserProject, WorkflowNode, WorkflowEdge
+from core.base_model import (
+    ProcessorStateDirection,
+    UserProfile, UserProject,
+    WorkflowNode, WorkflowEdge,
+    ProcessorStatusCode
+)
 from core.processor_state import State, StateConfig, StateDataKeyDefinition, StateConfigLM
 from core.processor_state_storage import Processor, ProcessorState, ProcessorProvider
 
@@ -87,7 +92,7 @@ def create_mock_dual_state_processor():
         id="test/mock/testprocessor",
         provider_id=provider.id,
         project_id=provider.project_id,
-        status=StatusCode.CREATED
+        status=ProcessorStatusCode.CREATED
     )
 
     return db_storage.insert_processor(processor=processor)
@@ -146,13 +151,13 @@ def create_mock_processor(processor_id: str = None, provider_id: str = None):
         id=processor_id if processor_id else "faa25cd2-ce16-4bdb-9591-b326f4336872",
         provider_id=provider.id,
         project_id=provider.project_id,
-        status=StatusCode.CREATED
+        status=ProcessorStatusCode.CREATED
     )
     return db_storage.insert_processor(processor=processor)
 
 
-def create_mock_processor_state_base(state: State):
-    processor = create_mock_processor()
+def create_mock_processor_state_base(state: State, processor_id: str = None):
+    processor = create_mock_processor(processor_id=processor_id)
 
     processor_state = ProcessorState(
         processor_id=processor.id,
@@ -166,28 +171,29 @@ def create_mock_processor_state_base(state: State):
     return processor_state
 
 
-def create_mock_processor_state_1() -> ProcessorState:
+def create_mock_processor_state_1(processor_id: str = None) -> ProcessorState:
     mock_state_1 = create_mock_random_state()
     mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f404"
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
-    processor_state = create_mock_processor_state_base(mock_state_1)
+    processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_1)
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 
 
-def create_mock_processor_state_2() -> ProcessorState:
+def create_mock_processor_state_2(processor_id: str = None) -> ProcessorState:
     mock_state_2 = create_mock_random_state()
     mock_state_2.id = "b7f5e802-3176-46f1-8120-fe9e4704f405"
     mock_state_2 = db_storage.insert_state(state=mock_state_2)
-    processor_state = create_mock_processor_state_base(mock_state_2)
+    processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_2)
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 
-def create_mock_processor_state_3() -> ProcessorState:
+
+def create_mock_processor_state_3(processor_id: str = None) -> ProcessorState:
     mock_state_1 = create_mock_random_state(state_id="b7f5e802-3176-46f1-8120-fe9e4704f406")
     mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f406"
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
-    processor_state = create_mock_processor_state_base(mock_state_1)
+    processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_1)
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
     return processor_state
 

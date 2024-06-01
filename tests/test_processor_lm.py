@@ -2,10 +2,8 @@ import os
 
 import logging
 from core.base_model import InstructionTemplate, UserProject, UserProfile
+from core.base_processor_lm import BaseProcessorLM
 from core.processor_state import State, StateConfigLM, StateDataKeyDefinition
-from core.processor_state_storage import StateMachineStorage
-
-from alethic_ism_db.db.base_db_storage_processor_lm import BaseDatabaseStorageProcessorLM
 from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
 
 logging.basicConfig(level=logging.DEBUG)
@@ -16,7 +14,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@l
 storage = PostgresDatabaseStorage(DATABASE_URL)
 
 
-class TestProcessorLM(BaseDatabaseStorageProcessorLM):
+class TestProcessorLM(BaseProcessorLM):
 
     def _execute(self, user_prompt: str, system_prompt: str, values: dict):
         logging.debug(f'user_prompt: {user_prompt}')

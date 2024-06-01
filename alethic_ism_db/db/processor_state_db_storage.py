@@ -10,7 +10,7 @@ from core.base_model import (
     UserProject,
     UserProfile,
     WorkflowNode,
-    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, StatusCode
+    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, ProcessorStatusCode, MonitorLogEvent
 )
 
 from core.processor_state import (
@@ -37,7 +37,7 @@ from core.processor_state_storage import (
     TemplateStorage,
     WorkflowStorage,
     UserProjectStorage,
-    UserProfileStorage
+    UserProfileStorage, MonitorLogEventStorage
 )
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
@@ -1612,9 +1612,10 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: ProcessorStateDetail(**row))
 
-    def fetch_processor_state(self, processor_id: str = None, state_id: str = None,
+    def fetch_processor_state(self,
+                              processor_id: str = None, state_id: str = None,
                               direction: ProcessorStateDirection = None,
-                              status: StatusCode = None) \
+                              status: ProcessorStatusCode = None) \
             -> Optional[List[ProcessorState]]:
 
         return self.execute_query_many(
@@ -1632,7 +1633,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         try:
             conn = self.create_connection()
-            with conn.cursor() as cursor:
+            with (conn.cursor() as cursor):
                 sql = """
                     INSERT INTO processor_state (
                         processor_id,
@@ -1649,7 +1650,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                         count = EXCLUDED.count, 
                         status = EXCLUDED.status,
                         current_index = EXCLUDED.current_index, 
-                        maximum_index = EXCLUDED.maximum_index 
+                        maximum_index = EXCLUDED.maximum_index
+                    RETURNING internal_id 
                 """
 
                 cursor.execute(sql, [
@@ -1662,6 +1664,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     processor_state.maximum_index
                 ])
 
+                # fetch the id from the returning sql statement
+                processor_state.internal_id = cursor.fetchone()[0] \
+                    if not processor_state.internal_id \
+                    else processor_state.internal_id
+
             conn.commit()
             return processor_state
         except Exception as e:
@@ -1670,6 +1677,66 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
+
+class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess):
+
+    def fetch_monitor_log_events(self, internal_reference_id: int = None, user_id: str = None, project_id: str = None) -> Optional[List[MonitorLogEvent]]:
+
+        if not internal_reference_id and not user_id and not project_id:
+            raise ValueError(f'at least one search criteria must be defined, '
+                             f'internal_reference_id, user_id or project_id')
+
+        return self.execute_query_many(
+            sql="select * from monitor_log_event",
+            conditions={
+                'internal_reference_id': internal_reference_id,
+                'user_id': user_id,
+                'project_id': project_id
+            },
+            mapper=lambda row: MonitorLogEvent(**row)
+        )
+
+    def insert_monitor_log_event(self, monitor_log_event: MonitorLogEvent) -> MonitorLogEvent:
+
+        try:
+            conn = self.create_connection()
+            with (conn.cursor() as cursor):
+                sql = """
+                    INSERT INTO monitor_log_event (
+                        log_type,
+                        internal_reference_id,
+                        user_id,
+                        project_id,
+                        exception,
+                        data
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING log_id 
+                """
+
+                cursor.execute(sql, [
+                    monitor_log_event.log_type,
+                    monitor_log_event.internal_reference_id,
+                    monitor_log_event.user_id,
+                    monitor_log_event.project_id,
+                    monitor_log_event.exception,
+                    monitor_log_event.data
+                ])
+
+                # fetch the id from the returning sql statement
+                monitor_log_event.log_id = cursor.fetchone()[0] \
+                    if not monitor_log_event.log_id \
+                    else monitor_log_event.log_id
+
+            conn.commit()
+            return monitor_log_event
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+
 class PostgresDatabaseStorage(StateMachineStorage):
 
     def __init__(self, database_url: str, incremental: bool = True, *args, **kwargs):
@@ -1677,10 +1744,10 @@ class PostgresDatabaseStorage(StateMachineStorage):
             state_storage=StateDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_storage=ProcessorDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_state_storage=ProcessorStateDatabaseStorage(database_url=database_url, incremental=incremental),
-            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url,
-                                                                        incremental=incremental),
+            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url, incremental=incremental),
             workflow_storage=WorkflowDatabaseStorage(database_url=database_url, incremental=incremental),
             template_storage=TemplateDatabaseStorage(database_url=database_url, incremental=incremental),
             user_profile_storage=UserProfileDatabaseStorage(database_url=database_url, incremental=incremental),
             user_project_storage=UserProjectDatabaseStorage(database_url=database_url, incremental=incremental),
+            monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url, incremental=incremental)
         )
