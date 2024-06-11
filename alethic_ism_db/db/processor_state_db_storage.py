@@ -104,6 +104,43 @@ class BaseDatabaseAccess:
         finally:
             self.release_connection(conn)
 
+    def execute_update(self, table: str, update_values: dict, conditions: dict) -> int:
+        conn = self.create_connection()
+        set_clauses = []
+        where_clauses = []
+        params = []
+
+        # Prepare SET clauses
+        for field, value in update_values.items():
+            set_clauses.append(f"{field} = %s")
+            params.append(value)
+
+        # Prepare WHERE clauses
+        for field, value in conditions.items():
+            if value is not None:
+                if value is SQLNull:
+                    where_clauses.append(f"{field} IS NULL")
+                else:
+                    where_clauses.append(f"{field} = %s")
+                    params.append(value)
+
+        # Construct the SQL statement
+        sql = f"UPDATE {table} SET " + ", ".join(set_clauses)
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                affected_rows = cursor.rowcount
+                conn.commit()
+                return affected_rows
+        except Exception as e:
+            logging.error(f"Database update failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
     def execute_query_one(self, sql: str, conditions: dict, mapper: Callable) -> Optional[Any]:
         conn = self.create_connection()
         params = []
@@ -1440,10 +1477,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         return state
 
     def delete_state_cascade(self, state_id):
-        self.delete_state_column_data_mapping(state_id=state_id)
-        self.delete_state_column_data(state_id=state_id)
+        self.delete_state_data(state_id=state_id)
         self.delete_state_column(state_id=state_id)
-
         self.delete_state_config_key_definitions(state_id=state_id)
         self.delete_state_config(state_id=state_id)
         self.delete_state(state_id=state_id)
@@ -1475,6 +1510,17 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
+    def reset_state_column_data_zero(self, state_id, zero: int = 0) -> int:
+        return self.execute_update(
+            table="state",
+            update_values={
+                'count': zero
+            },
+            conditions={
+                'id': state_id
+            },
+        )
 
     def delete_state_column_data_mapping(self, state_id):
 
@@ -1517,6 +1563,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
+    def delete_state_data(self, state_id: str):
+        self.delete_state_column_data_mapping(state_id=state_id)
+        self.delete_state_column_data(state_id=state_id)
+        self.reset_state_column_data_zero(state_id=state_id)
 
     def delete_state_config_key_definition(self, state_id: str, definition_type: str, definition_id: int) -> int:
         if not (state_id or definition_type or definition_id):
@@ -1612,6 +1663,21 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: ProcessorStateDetail(**row))
 
+    def fetch_processor_states_by_project_id(self, project_id) -> Optional[List[ProcessorState]]:
+
+        processor_states = self.execute_query_fixed(
+            sql="""
+                SELECT * FROM processor_state 
+                 WHERE state_id IN (
+                    SELECT id FROM state 
+                     WHERE project_id = %s
+                 )""",
+            params=[project_id],
+            mapper=lambda row: ProcessorState(**row)
+        )
+
+        return processor_states
+
     def fetch_processor_state(self,
                               processor_id: str = None, state_id: str = None,
                               direction: ProcessorStateDirection = None,
@@ -1627,6 +1693,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                 'status': status.value if status else None
             },
             mapper=lambda row: ProcessorState(**row))
+
 
     def insert_processor_state(self, processor_state: ProcessorState) \
             -> ProcessorState:

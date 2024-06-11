@@ -483,6 +483,66 @@ def test_create_processor_state():
     assert fetched_processed_state[0].current_index == saved_processor_state.current_index
     assert fetched_processed_state[0].maximum_index == saved_processor_state.maximum_index
 
+def test_processor_state_fetch_by_project_id():
+
+    user = create_user_profile(user_id="processor_state_project_id")
+    project = create_user_project0(user.user_id, "processor_state_project_id")
+    state = create_mock_random_state(
+        state_id="processor_state_fetch_project_id",
+        project_id=project.project_id
+    )
+
+    user = db_storage.insert_user_profile(user_profile=user)
+    project = db_storage.insert_user_project(project)
+    state = db_storage.save_state(state=state)
+
+    # create a mocked processor state connection
+    processor_state = create_mock_processor_state_1(
+        processor_id="processor_state_fetch_project_id",
+        state_id=state.id,
+        project_id=project.project_id
+    )
+
+    # fetch processor states on a project level
+    processor_states = db_storage.fetch_processor_states_by_project_id(
+        project_id=project.project_id
+    )
+
+    assert len(processor_states) == 1
+
+def test_create_state__data_and_delete_state_data():
+    state = create_mock_random_state(state_id="34fce882-a168-47be-9750-b1d16a763e87", add_data=False)
+    state.config.primary_key = [StateDataKeyDefinition(
+        name="question"
+    )]
+    state = db_storage.save_state(state=state)
+    assert state
+    fetch_state = db_storage.load_state(state_id=state.id)
+
+    # delete any previous state
+    db_storage.delete_state_data(state_id=fetch_state.id)
+    fetch_state = db_storage.load_state(state_id=fetch_state.id)
+    assert fetch_state.count == 0
+
+    # apply and save new data into state
+    data = [
+        {"question": "is the sky blue?"},
+        {"question": "do animals eat?"},
+        {"question": "can dogs sing?"}
+    ]
+
+    [fetch_state.apply_query_state(query_state=qs) for qs in data]      # apply the query states consecutively.
+    db_storage.save_state(state=fetch_state)
+
+    # load state after having been saved, and check state consistency
+    fetch_state = db_storage.load_state(state_id=fetch_state.id)
+    assert fetch_state
+    assert fetch_state.count == 3
+
+    # delete state data again and check for complete removal
+    db_storage.delete_state_data(state_id=state.id)
+    fetch_state = db_storage.load_state(state_id=fetch_state.id)
+    assert fetch_state.count == 0
 
 def test_processor_state_transition():
 

@@ -171,9 +171,22 @@ def create_mock_processor_state_base(state: State, processor_id: str = None):
     return processor_state
 
 
-def create_mock_processor_state_1(processor_id: str = None) -> ProcessorState:
-    mock_state_1 = create_mock_random_state()
-    mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f404"
+def create_mock_processor_state_1(processor_id: str = None, state_id: str = None, project_id: str = None) \
+        -> ProcessorState:
+
+    # vars
+    if not state_id:
+        state = create_mock_random_state(state_id="b7f5e802-3176-46f1-8120-fe9e4704f404", project_id=project_id)
+        state_id = state.id
+
+    if not project_id:
+        user = create_user_profile("b7f5e802-3176-46f1-8120-fe9e4704f404")
+        project = create_user_project0(user_id=user.user_id, project_id="b7f5e802-3176-46f1-8120-fe9e4704f404")
+        user = db_storage.insert_user_profile(user)
+        project = db_storage.insert_user_project(project)
+        project_id = project.project_id
+
+    mock_state_1 = create_mock_random_state(state_id=state_id, project_id=project_id)
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
     processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_1)
     processor_state = db_storage.insert_processor_state(processor_state=processor_state)
@@ -198,7 +211,7 @@ def create_mock_processor_state_3(processor_id: str = None) -> ProcessorState:
     return processor_state
 
 
-def create_mock_random_state(state_id: str = None, project_id: str = None) -> State:
+def create_mock_random_state(state_id: str = None, project_id: str = None, add_data: bool = True) -> State:
     state = State(
         id=state_id,
         project_id=project_id,
@@ -208,6 +221,9 @@ def create_mock_random_state(state_id: str = None, project_id: str = None) -> St
             system_template_id="./test_templates/test_template_P1_system.json"
         )
     )
+
+    if not add_data:
+        return state
 
     for i in range(5):
         for j in range(5):
