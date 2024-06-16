@@ -3,10 +3,6 @@ create table user_profile (
     user_id varchar(36) not null primary key
 );
 
-insert into user_profile (user_id) values ('a57263b6-8869-406b-91e9-bdfb8dfd6785');
-insert into user_profile (user_id) values ('f401db9b-50fd-4960-8661-de3e7c2f9092');
-
-
 drop table if exists user_project cascade;
 create table user_project (
   project_id varchar(36) not null primary key,
@@ -126,7 +122,7 @@ insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.0')
 insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.1');
 commit;
 
-drop table processor_class cascade;
+drop table if exists processor_class cascade;
 create table processor_class (
     class_name varchar(32) not null primary key
 );
@@ -206,6 +202,9 @@ create table processor_state (
     unique (internal_id)
 );
 
+alter table processor_state add constraint processor_state_state_id_fk foreign key (state_id) references state(id);
+alter table processor_state add constraint processor_state_processor_id_fk foreign key (processor_id) references processor(id);
+
 commit;
 
 drop table if exists monitor_log_event;
@@ -228,7 +227,7 @@ SELECT sc.*, sd.* FROM state_column sc
 ORDER BY state_id, data_index, column_id;
 
 --- VALIDATION FUNCTION FOR COLUMN ID
-DROP FUNCTION validate_column_id;
+DROP FUNCTION IF EXISTS validate_column_id;
 CREATE OR REPLACE FUNCTION validate_column_id(new_id BIGINT, new_state_id VARCHAR)
 RETURNS BIGINT AS $$
 DECLARE

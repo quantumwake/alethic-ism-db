@@ -529,7 +529,7 @@ def test_create_state__data_and_delete_state_data():
         {"question": "is the sky blue?"},
         {"question": "do animals eat?"},
         {"question": "can dogs sing?"}
-    ]
+    ]_
 
     [fetch_state.apply_query_state(query_state=qs) for qs in data]      # apply the query states consecutively.
     db_storage.save_state(state=fetch_state)

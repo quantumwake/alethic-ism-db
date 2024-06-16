@@ -8,9 +8,9 @@ WORKDIR /app
 ADD . /app/repo
 
 # copy the alethic-ism-core conda package
-ARG CONDA_LOCAL_CHANNEL_TARGZ
-COPY ${CONDA_LOCAL_CHANNEL_TARGZ} .
-RUN tar -zxvf $CONDA_LOCAL_CHANNEL_TARGZ -C /
+ARG CONDA_ISM_CORE_PATH
+COPY ${CONDA_ISM_CORE_PATH} .
+RUN tar -zxvf $CONDA_ISM_CORE_PATH -C /
 
 # Move to the repository directory
 WORKDIR /app/repo
