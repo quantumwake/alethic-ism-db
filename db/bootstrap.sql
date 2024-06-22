@@ -190,6 +190,7 @@ create type processor_state_direction AS ENUM (
 
 drop table if exists processor_state;
 create table processor_state (
+    id varchar(73) not null,
     internal_id serial not null,
     processor_id varchar(36) not null,
     state_id varchar(36) not null references state (id),
@@ -199,7 +200,8 @@ create table processor_state (
     current_index int null,
     maximum_index int null,
     primary key (processor_id, state_id, direction),
-    unique (internal_id)
+    unique (internal_id),
+    unique (id)
 );
 
 alter table processor_state add constraint processor_state_state_id_fk foreign key (state_id) references state(id);

@@ -160,6 +160,7 @@ def create_mock_processor_state_base(state: State, processor_id: str = None):
     processor = create_mock_processor(processor_id=processor_id)
 
     processor_state = ProcessorState(
+        id=f"{state.id}:{processor_id}",
         processor_id=processor.id,
         state_id=state.id,
         direction=ProcessorStateDirection.INPUT,
@@ -189,7 +190,7 @@ def create_mock_processor_state_1(processor_id: str = None, state_id: str = None
     mock_state_1 = create_mock_random_state(state_id=state_id, project_id=project_id)
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
     processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_1)
-    processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    processor_state = db_storage.insert_processor_state_route(processor_state=processor_state)
     return processor_state
 
 
@@ -198,7 +199,7 @@ def create_mock_processor_state_2(processor_id: str = None) -> ProcessorState:
     mock_state_2.id = "b7f5e802-3176-46f1-8120-fe9e4704f405"
     mock_state_2 = db_storage.insert_state(state=mock_state_2)
     processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_2)
-    processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    processor_state = db_storage.insert_processor_state_route(processor_state=processor_state)
     return processor_state
 
 
@@ -207,7 +208,7 @@ def create_mock_processor_state_3(processor_id: str = None) -> ProcessorState:
     mock_state_1.id = "b7f5e802-3176-46f1-8120-fe9e4704f406"
     mock_state_1 = db_storage.insert_state(state=mock_state_1)
     processor_state = create_mock_processor_state_base(processor_id=processor_id, state=mock_state_1)
-    processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    processor_state = db_storage.insert_processor_state_route(processor_state=processor_state)
     return processor_state
 
 
@@ -456,6 +457,7 @@ def create_mock_workflow_nodes(project_id: str):
         source_handle="source_handle_1",
         target_handle="target_handle_1",
         animated=False,
+        type="default",
         edge_label="Input Test Animal State => Dual State Merger (Animal x Template)"
     )
 
@@ -466,6 +468,7 @@ def create_mock_workflow_nodes(project_id: str):
         source_handle="source_handle_1",
         target_handle="target_handle_1",
         animated=False,
+        type="default",
         edge_label="Input Test Instruction Template State  => Dual State Merger (Animal x Template)"
     )
 

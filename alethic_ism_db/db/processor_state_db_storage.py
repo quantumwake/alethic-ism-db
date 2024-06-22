@@ -26,18 +26,17 @@ from core.processor_state import (
 
 # import interfaces relevant to the storage subsystem
 from core.processor_state_storage import (
-    ProcessorStateStorage,
     Processor,
     ProcessorState,
     ProcessorProvider,
-    StateMachineStorage,
     ProcessorStorage,
     StateStorage,
     ProcessorProviderStorage,
+    ProcessorStateRouteStorage,
     TemplateStorage,
     WorkflowStorage,
     UserProjectStorage,
-    UserProfileStorage, MonitorLogEventStorage
+    UserProfileStorage, MonitorLogEventStorage, StateMachineStorage
 )
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
@@ -1026,8 +1025,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 for column, column_definition in create_or_update_columns_definitions.items():
                     values = [
                         # actual values for the WITH statement in the sql above
-                        column_definition.id,   # first id within the WITH statement
-                        state_id,               # first state_id within the WITH statement
+                        column_definition.id,  # first id within the WITH statement
+                        state_id,  # first state_id within the WITH statement
 
                         # actual values for the insert or update
                         state_id,
@@ -1571,7 +1570,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
     def delete_state_config_key_definition(self, state_id: str, definition_type: str, definition_id: int) -> int:
         if not (state_id or definition_type or definition_id):
-            raise PermissionError(f'state_id, definition_type and definition_id must be specified when deleting a state config key definition')
+            raise PermissionError(
+                f'state_id, definition_type and definition_id must be specified when deleting a state config key definition')
 
         return self.execute_delete_query(
             sql="DELETE FROM state_column_key_definition",
@@ -1640,30 +1640,30 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         return state
 
 
-class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
+class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAccess):
 
-    def fetch_prcoessor_state_details(self, processor_id, state_id, direction: ProcessorStateDirection, provider_id):
-        return self.execute_query_many(
-            sql="""select ps.processor_id,
-                       ps.state_id,
-                       ps.direction,
-                       ps.count,
-                       ps.current_index,
-                       ps.maximum_index,
-                       ps.status as state_status
-                       p.project_id,
-                       p.provider_id
-                  from processor_state ps
-                 inner join processor p
-                    on p.id = ps.processor_id""",
-            conditions={
-                'processor_id': processor_id,
-                'state_id': state_id,
-                'direction': direction.value if direction else None
-            },
-            mapper=lambda row: ProcessorStateDetail(**row))
+    # def fetch_prcoessor_state_details(self, processor_id, state_id, direction: ProcessorStateDirection, provider_id):
+    #     return self.execute_query_many(
+    #         sql="""select ps.processor_id,
+    #                    ps.state_id,
+    #                    ps.direction,
+    #                    ps.count,
+    #                    ps.current_index,
+    #                    ps.maximum_index,
+    #                    ps.status as state_status
+    #                    p.project_id,
+    #                    p.provider_id
+    #               from processor_state ps
+    #              inner join processor p
+    #                 on p.id = ps.processor_id""",
+    #         conditions={
+    #             'processor_id': processor_id,
+    #             'state_id': state_id,
+    #             'direction': direction.value if direction else None
+    #         },
+    #         mapper=lambda row: ProcessorStateDetail(**row))
 
-    def fetch_processor_states_by_project_id(self, project_id) -> Optional[List[ProcessorState]]:
+    def fetch_processor_state_routes_by_project_id(self, project_id) -> Optional[List[ProcessorState]]:
 
         processor_states = self.execute_query_fixed(
             sql="""
@@ -1678,15 +1678,18 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
         return processor_states
 
-    def fetch_processor_state(self,
-                              processor_id: str = None, state_id: str = None,
-                              direction: ProcessorStateDirection = None,
-                              status: ProcessorStatusCode = None) \
+    def fetch_processor_state_route(self,
+                                    route_id: str = None,
+                                    processor_id: str = None,
+                                    state_id: str = None,
+                                    direction: ProcessorStateDirection = None,
+                                    status: ProcessorStatusCode = None) \
             -> Optional[List[ProcessorState]]:
 
         return self.execute_query_many(
             sql="SELECT * FROM processor_state",
             conditions={
+                'id': route_id,
                 'processor_id': processor_id,
                 'state_id': state_id,
                 'direction': direction.value if direction else None,
@@ -1694,8 +1697,23 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: ProcessorState(**row))
 
+    def delete_processor_state_route_by_id(self, processor_state_id: str) -> int:
+        return self.execute_delete_query(
+            "DELETE FROM processor_state",
+            conditions={
+                "id": processor_state_id
+            }
+        )
 
-    def insert_processor_state(self, processor_state: ProcessorState) \
+    def delete_processor_state_route(self, route_id: str) -> int:
+        return self.execute_delete_query(
+            "DELETE FROM processor_state",
+            conditions={
+                "id": route_id
+            }
+        )
+
+    def insert_processor_state_route(self, processor_state: ProcessorState) \
             -> ProcessorState:
 
         try:
@@ -1703,6 +1721,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
             with (conn.cursor() as cursor):
                 sql = """
                     INSERT INTO processor_state (
+                        id,
                         processor_id,
                         state_id,
                         direction,
@@ -1711,7 +1730,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                         current_index,
                         maximum_index
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (processor_id, state_id, direction)
                     DO UPDATE SET 
                         count = EXCLUDED.count, 
@@ -1721,7 +1740,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     RETURNING internal_id 
                 """
 
+                # generate a new processor id based on the direction of the edge
+                # if not processor_state.id:
+                #     if processor_state.direction.INPUT:
+                #         processor_state.id = f'{processor_state.state_id}:{processor_state.processor_id}'
+                #     elif processor_state.direction.OUTPUT:
+                #         processor_state.id = f'{processor_state.processor_id}:{processor_state.state_id}'
+
                 cursor.execute(sql, [
+                    processor_state.id,
                     processor_state.processor_id,
                     processor_state.state_id,
                     processor_state.direction.value,
@@ -1731,7 +1758,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
                     processor_state.maximum_index
                 ])
 
-                # fetch the id from the returning sql statement
+                # fetch the internal id from the response of the executed statement
                 processor_state.internal_id = cursor.fetchone()[0] \
                     if not processor_state.internal_id \
                     else processor_state.internal_id
@@ -1747,7 +1774,11 @@ class ProcessorStateDatabaseStorage(ProcessorStateStorage, BaseDatabaseAccess):
 
 class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess):
 
-    def fetch_monitor_log_events(self, internal_reference_id: int = None, user_id: str = None, project_id: str = None) -> Optional[List[MonitorLogEvent]]:
+    def fetch_monitor_log_events(
+            self,
+            internal_reference_id: int = None,
+            user_id: str = None,
+            project_id: str = None) -> Optional[List[MonitorLogEvent]]:
 
         if not internal_reference_id and not user_id and not project_id:
             raise ValueError(f'at least one search criteria must be defined, '
@@ -1762,6 +1793,29 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess)
             },
             mapper=lambda row: MonitorLogEvent(**row)
         )
+
+    def delete_monitor_log_event(
+            self,
+            log_id: str = None,
+            user_id: str = None,
+            project_id: str = None,
+            force: bool = False) -> int:
+
+        # at-least one parameter must be defined (or forced)
+        if not (id or user_id or project_id) and not force:
+            return 0
+
+        # delete the monitor log based on input parameters
+        return self.execute_delete_query(
+            "delete from monitor_log_event",
+            conditions={
+                "log_id": log_id,
+                "user_id": user_id,
+                "project_id": project_id
+            }
+        )
+
+
 
     def insert_monitor_log_event(self, monitor_log_event: MonitorLogEvent) -> MonitorLogEvent:
 
@@ -1792,8 +1846,8 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess)
 
                 # fetch the id from the returning sql statement
                 returned = cursor.fetchone()
-                monitor_log_event.log_id = returned[0]          # serial id / sequence
-                monitor_log_event.log_time = returned[1]        # log time
+                monitor_log_event.log_id = returned[0]  # serial id / sequence
+                monitor_log_event.log_time = returned[1]  # log time
 
             conn.commit()
             return monitor_log_event
@@ -1811,7 +1865,8 @@ class PostgresDatabaseStorage(StateMachineStorage):
             state_storage=StateDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_storage=ProcessorDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_state_storage=ProcessorStateDatabaseStorage(database_url=database_url, incremental=incremental),
-            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url, incremental=incremental),
+            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url,
+                                                                        incremental=incremental),
             workflow_storage=WorkflowDatabaseStorage(database_url=database_url, incremental=incremental),
             template_storage=TemplateDatabaseStorage(database_url=database_url, incremental=incremental),
             user_profile_storage=UserProfileDatabaseStorage(database_url=database_url, incremental=incremental),

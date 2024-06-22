@@ -358,22 +358,22 @@ def test_create_processor_provider():
 def test_create_processor_status_change_status():
     processor_state = create_mock_processor_state_3(processor_id="test_processor_uuid_id")
 
-    saved_processor_state = db_storage.insert_processor_state(processor_state=processor_state)
+    saved_processor_state = db_storage.insert_processor_state_route(processor_state=processor_state)
     assert processor_state.internal_id > 0
     assert processor_state.status == saved_processor_state.status
     assert saved_processor_state.status == ProcessorStatusCode.CREATED
 
-    fetched_processor_state_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    fetched_processor_state_list = db_storage.fetch_processor_state_route(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
     assert len(fetched_processor_state_list) == 1
 
     fetched_processor_state = fetched_processor_state_list[0]
     assert fetched_processor_state.status == ProcessorStatusCode.CREATED
 
     fetched_processor_state.status = ProcessorStatusCode.QUEUED
-    saved_processor_state = db_storage.insert_processor_state(processor_state=fetched_processor_state)
+    saved_processor_state = db_storage.insert_processor_state_route(processor_state=fetched_processor_state)
 
     # check the status update
-    fetched_processor_state_again_list = db_storage.fetch_processor_state(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    fetched_processor_state_again_list = db_storage.fetch_processor_state_route(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
     fetched_processor_state_again = fetched_processor_state_again_list[0]
     assert fetched_processor_state_again.status == ProcessorStatusCode.QUEUED
 
@@ -455,13 +455,13 @@ def test_create_processor_state():
     assert processor_state_1.processor_id == processor_state_2.processor_id
 
     # create the state and check whether the fetch works
-    processor_states_list_1 = db_storage.fetch_processor_state(state_id=processor_state_1.state_id)
-    processor_states_list_2 = db_storage.fetch_processor_state(state_id=processor_state_2.state_id)
+    processor_states_list_1 = db_storage.fetch_processor_state_route(state_id=processor_state_1.state_id)
+    processor_states_list_2 = db_storage.fetch_processor_state_route(state_id=processor_state_2.state_id)
     assert len(processor_states_list_1) == 1 and len(processor_states_list_2) == 1
     assert processor_states_list_1[0].state_id == processor_state_1.state_id
     assert processor_states_list_2[0].state_id == processor_state_2.state_id
 
-    processor_states = db_storage.fetch_processor_state(processor_id=processor_state_1.processor_id)
+    processor_states = db_storage.fetch_processor_state_route(processor_id=processor_state_1.processor_id)
     assert len(processor_states) == 2
 
     # ensure count values are correctly persisted
@@ -474,8 +474,8 @@ def test_create_processor_state():
     processor_states_list_1[0].current_index = 5
     processor_states_list_1[0].maximum_index = 6
 
-    saved_processor_state = db_storage.insert_processor_state(processor_state=processor_states_list_1[0])
-    fetched_processed_state = db_storage.fetch_processor_state(processor_id=saved_processor_state.processor_id,
+    saved_processor_state = db_storage.insert_processor_state_route(processor_state=processor_states_list_1[0])
+    fetched_processed_state = db_storage.fetch_processor_state_route(processor_id=saved_processor_state.processor_id,
                                                                state_id=saved_processor_state.state_id,
                                                                direction=saved_processor_state.direction)
 
@@ -504,7 +504,7 @@ def test_processor_state_fetch_by_project_id():
     )
 
     # fetch processor states on a project level
-    processor_states = db_storage.fetch_processor_states_by_project_id(
+    processor_states = db_storage.fetch_processor_state_routes_by_project_id(
         project_id=project.project_id
     )
 
@@ -529,7 +529,7 @@ def test_create_state__data_and_delete_state_data():
         {"question": "is the sky blue?"},
         {"question": "do animals eat?"},
         {"question": "can dogs sing?"}
-    ]_
+    ]
 
     [fetch_state.apply_query_state(query_state=qs) for qs in data]      # apply the query states consecutively.
     db_storage.save_state(state=fetch_state)
@@ -614,12 +614,18 @@ def test_monitor_log_event_with_exception_and_data():
 
     for log in fetched_logs:
         assert log.log_time
+        delete_count = db_storage.delete_monitor_log_event(
+            log_id=log.log_id
+        )
+        assert delete_count == 1
+
 
 def test_state_persistence():
     state = create_mock_random_state()
 
     assert state != None
     db_storage.save_state(state=state)
+
 
 
 def test_state_config_lm():

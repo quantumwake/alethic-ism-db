@@ -1,4 +1,4 @@
-APP_NAME="alethic-ism-api"
+APP_NAME="alethic-ism-db"
 DOCKER_NAMESPACE="krasaee"
 CONDA_PACKAGE_PATH_ISM_CORE="../alethic-ism-core"
 GIT_COMMIT_ID=$(git rev-parse HEAD)
@@ -12,7 +12,8 @@ then
 fi;
 
 echo "Using arch: $ARCH for image tag $TAG"
-conda_ism_core_path=$(find $CONDA_PACKAGE_PATH_ISM_CORE -type f -name "alethic-ism-core*.tar.gz")
+#conda_ism_core_path=$(find $CONDA_PACKAGE_PATH_ISM_CORE -type f -name "alethic-ism-core*.tar.gz")
+conda_ism_core_path=$(ls -ltr $CONDA_PACKAGE_PATH_ISM_CORE/alethic-ism-core*.tar.gz | awk '{print $9}' | tail -n 1)
 conda_ism_core_path=$(basename $conda_ism_core_path)
 
 echo "Using Conda ISM core: $conda_ism_core_path"
@@ -23,7 +24,7 @@ then
 
   # TODO hardcoded - this is set to a private repo for now, such that it can be deployed to k8s
   docker build \
-   --progress=plain --platform $ARCH -t quantumwake/alethic-ism-db:latest \
+   --progress=plain --platform $ARCH -t $TAG \
    --build-arg CONDA_ISM_CORE_PATH=$conda_ism_core_path \
    --no-cache .
 fi;

@@ -1,7 +1,14 @@
 #!/bin/bash
 
-image="quantumwake/alethic-ism-db:latest"
-container_id=$(docker create quantumwake/alethic-ism-db:latest)
+APP_NAME="alethic-ism-db"
+DOCKER_NAMESPACE="krasaee"
+GIT_COMMIT_ID=$(git rev-parse HEAD)
+TAG="$DOCKER_NAMESPACE/$APP_NAME:$GIT_COMMIT_ID"
+
+#image="quantumwake/alethic-ism-db:latest"
+#container_id=$(docker create quantumwake/alethic-ism-db:latest)
+
+container_id=`docker create $TAG`
 echo "Container ID: $container_id from image $image" # For debugging
 docker images # Optional: For debugging, to list available images
 
