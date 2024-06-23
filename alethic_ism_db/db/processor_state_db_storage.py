@@ -684,7 +684,8 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
                          VALUES (%s, %s, %s, %s)
                              ON CONFLICT (id) 
                       DO UPDATE SET 
-                           status = EXCLUDED.status
+                        provider_id = EXCLUDED.provider_id,
+                        status = EXCLUDED.status
                 """
 
                 processor.id = processor.id if processor.id else str(uuid.uuid4())
@@ -893,36 +894,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 "data": attr_value
             }
             for attr_name, attr_value in vars(state.config).items()
-            if attr_value and isinstance(attr_value, (int, float, str, bool, type(None), bytes, complex))
+            if isinstance(attr_value, (int, float, str, bool, bytes, complex))
         ]
-
-        # config = state.config
-        # if the config is LM then we have additional information
-        # if isinstance(state.config, StateConfigCode):
-        #     # additional parameters required for config code
-        #     attributes.extend([
-        #         {
-        #             "name": "template_id",
-        #             "data": config.template_id
-        #         },
-        #         {
-        #             "name": "language",
-        #             "data": config.language
-        #         }
-        #     ])
-        # elif isinstance(state.config, StateConfigLM):
-        #
-        #     # additional parameters required for config lm
-        #     attributes.extend([
-        #         {
-        #             "name": "user_template_id",
-        #             "data": config.user_template_id
-        #         },
-        #         {
-        #             "name": "system_template_id",
-        #             "data": config.system_template_id
-        #         }
-        #     ])
 
         # create a new state
         state_id = create_state_id_by_state(state=state)
