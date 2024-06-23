@@ -889,42 +889,40 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         # switch it to a database storage class
         attributes = [
             {
-                "name": "storage_class",
-                "data": "database"
-            },
-            {
-                "name": "name",
-                "data": state.config.name
+                "name": attr_name,
+                "data": attr_value
             }
+            for attr_name, attr_value in vars(state.config).items()
+            if attr_value and isinstance(attr_value, (int, float, str, bool, type(None), bytes, complex))
         ]
-        config = state.config
 
+        # config = state.config
         # if the config is LM then we have additional information
-        if isinstance(state.config, StateConfigCode):
-            # additional parameters required for config code
-            attributes.extend([
-                {
-                    "name": "template_id",
-                    "data": config.template_id
-                },
-                {
-                    "name": "language",
-                    "data": config.language
-                }
-            ])
-        elif isinstance(state.config, StateConfigLM):
-
-            # additional parameters required for config lm
-            attributes.extend([
-                {
-                    "name": "user_template_id",
-                    "data": config.user_template_id
-                },
-                {
-                    "name": "system_template_id",
-                    "data": config.system_template_id
-                }
-            ])
+        # if isinstance(state.config, StateConfigCode):
+        #     # additional parameters required for config code
+        #     attributes.extend([
+        #         {
+        #             "name": "template_id",
+        #             "data": config.template_id
+        #         },
+        #         {
+        #             "name": "language",
+        #             "data": config.language
+        #         }
+        #     ])
+        # elif isinstance(state.config, StateConfigLM):
+        #
+        #     # additional parameters required for config lm
+        #     attributes.extend([
+        #         {
+        #             "name": "user_template_id",
+        #             "data": config.user_template_id
+        #         },
+        #         {
+        #             "name": "system_template_id",
+        #             "data": config.system_template_id
+        #         }
+        #     ])
 
         # create a new state
         state_id = create_state_id_by_state(state=state)
@@ -1521,8 +1519,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             },
         )
 
-    def delete_state_column_data_mapping(self, state_id):
-
+    def delete_state_column_data_mapping(self, state_id, column_id: int = None) -> int:
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
@@ -1535,7 +1532,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def delete_state_column(self, state_id):
+    def delete_state_column(self, state_id: str, column_id: int = None) -> int:
 
         try:
             conn = self.create_connection()
@@ -1549,7 +1546,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         finally:
             self.release_connection(conn)
 
-    def delete_state_column_data(self, state_id):
+    def delete_state_column_data(self, state_id, column_id: int = None) -> int:
 
         try:
             conn = self.create_connection()
@@ -1562,6 +1559,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
+
 
     def delete_state_data(self, state_id: str):
         self.delete_state_column_data_mapping(state_id=state_id)
