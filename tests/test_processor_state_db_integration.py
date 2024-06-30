@@ -533,6 +533,7 @@ def test_create_state__data_and_delete_state_data():
 
     [fetch_state.apply_query_state(query_state=qs) for qs in data]      # apply the query states consecutively.
     db_storage.save_state(state=fetch_state)
+    db_storage.update_state_count(state=fetch_state)
 
     # load state after having been saved, and check state consistency
     fetch_state = db_storage.load_state(state_id=fetch_state.id)

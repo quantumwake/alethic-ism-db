@@ -150,7 +150,9 @@ CREATE TABLE processor_provider (
 
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
-('language/models/openai/gpt-4-1106-preview', 'OpenAI', 'gpt-4-1106-preview', 'NaturalLanguageProcessing'),
+('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
+('image/models/openai/dall-e-2', 'OpenAI', 'dall-e-2', 'ImageProcessing'),
+('image/models/openai/dall-e-3', 'OpenAI', 'dall-e-3', 'ImageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),

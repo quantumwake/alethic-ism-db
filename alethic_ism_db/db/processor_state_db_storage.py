@@ -21,7 +21,7 @@ from core.processor_state import (
     StateDataColumnDefinition,
     StateDataRowColumnData,
     StateDataColumnIndex,
-    InstructionTemplate, StateConfigCode
+    InstructionTemplate, StateConfigCode, StateConfigVisual
 )
 
 # import interfaces relevant to the storage subsystem
@@ -819,6 +819,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: State(**row))
 
+
     def insert_state(self, state: State, config_uuid=False):
         conn = self.create_connection()
 
@@ -832,20 +833,18 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO state (id, project_id, state_type, count) 
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO state (id, project_id, state_type) 
+                    VALUES (%s, %s, %s)
                     ON CONFLICT (id) 
                     DO UPDATE SET 
-                        state_type = EXCLUDED.state_type,
-                        count = EXCLUDED.count
+                        state_type = EXCLUDED.state_type
                 """
 
                 # setup data values for state
                 values = [
                     state.id,
                     state.project_id,
-                    state.state_type,
-                    state.count
+                    state.state_type
                 ]
 
                 cursor.execute(sql, values)
@@ -1388,6 +1387,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 **general_attributes,
                 **config_attributes
             )
+        elif 'StateConfigVisual' == state_type:
+            config = StateConfigVisual(
+                **general_attributes,
+                **config_attributes
+            )
         elif 'StateConfigCode' == state_type:
             config = StateConfigCode(
                 **general_attributes,
@@ -1506,18 +1510,15 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def delete_state_column(self, state_id: str, column_id: int = None) -> int:
+        if not state_id:
+            raise ValueError(f'state id must be specified')
 
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = "DELETE FROM state_column WHERE state_id = %s"
-                cursor.execute(sql, [state_id])
-            conn.commit()
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
+        return self.execute_delete_query(
+            sql="DELETE FROM state_column",
+                conditions=[{
+                    "id": column_id,
+                    "state_id": state_id
+                }])
 
     def delete_state_column_data(self, state_id, column_id: int = None) -> int:
 
@@ -1568,7 +1569,12 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             self.release_connection(conn)
 
     def update_state_count(self, state: State) -> State:
-        return self.insert_state(state=state)
+        self.execute_update(
+            table="state",
+            update_values={"count": state.count},
+            conditions={"id": state.id}
+        )
+        return state
 
     def save_state(self, state: State, options: dict = None) -> State:
 
@@ -1579,11 +1585,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             return options[name] if name in options else default
 
         force_update_column = fetch_option('force_update_column', False)
-
         first_time = state.persisted_position <= 0
-
-        # TODO needs revision as columns and structures may change, need a way to check for
-        #  consistency similar to how it is done at the processor apply_column,apply_data functions
         if not self.incremental or first_time:
             state = self.insert_state(state=state)
             self.insert_state_config(state=state)
