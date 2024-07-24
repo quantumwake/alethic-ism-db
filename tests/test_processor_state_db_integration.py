@@ -510,6 +510,7 @@ def test_processor_state_fetch_by_project_id():
 
     assert len(processor_states) == 1
 
+
 def test_create_state__data_and_delete_state_data():
     state = create_mock_random_state(state_id="34fce882-a168-47be-9750-b1d16a763e87", add_data=False)
     state.config.primary_key = [StateDataKeyDefinition(
