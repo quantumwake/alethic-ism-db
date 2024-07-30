@@ -156,6 +156,7 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-3-5-sonnet-20240620', 'Anthropic', 'claude-3-5-sonnet-20240620', 'NaturalLanguageProcessing'),
 ('data/transformers/mixer/state-coalescer-1.0', 'State Coalescer', 'state-coalescer-1.0', 'DataTransformation'),
 ('data/transformers/sampler/state-ensembler-1.0', 'State Ensembler', 'state-ensembler-1.0', 'DataTransformation'),
 ('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing')

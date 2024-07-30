@@ -674,6 +674,20 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
 
         return processor
 
+    def change_processor_status(self, processor_id: str, status: ProcessorStatusCode) -> int:
+        if not processor_id:
+            raise ValueError(f'processor id cannot be empty or null')
+
+        self.execute_update(
+            table="processor",
+            update_values={
+                "status": status.value
+            },
+            conditions={
+                "id": processor_id
+            }
+        )
+
     def insert_processor(self, processor: Processor) -> Processor:
 
         try:
@@ -684,8 +698,8 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
                          VALUES (%s, %s, %s, %s)
                              ON CONFLICT (id) 
                       DO UPDATE SET 
-                        provider_id = EXCLUDED.provider_id,
-                        status = EXCLUDED.status
+                        provider_id = EXCLUDED.provider_id
+--                         status = EXCLUDED.status
                 """
 
                 processor.id = processor.id if processor.id else str(uuid.uuid4())
@@ -713,6 +727,28 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
                 'name': name
             },
             mapper=lambda row: ProcessorProperty(**row))
+
+    def fetch_processor_property_by_name(self, processor_id: str, property_name: str):
+        return self.execute_query_one(
+            sql="SELECT * FROM processor_property",
+            conditions={
+                'processor_id': processor_id,
+                'name': property_name
+            },
+            mapper=lambda row: ProcessorProperty(**row)
+        )
+
+    def update_processor_property(self, processor_id: str, property_name: str, property_value: str) -> int:
+        return self.execute_update(
+            table="processor_property",
+            update_values={
+                "value": property_value
+            },
+            conditions={
+                'processor_id': processor_id,
+                'name': property_name
+            },
+        )
 
     def insert_processor_properties(self, properties: List[ProcessorProperty]) -> List[ProcessorProperty]:
         try:
@@ -1650,6 +1686,18 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
         )
 
         return processor_states
+
+    def fetch_processor_state_route_by_route_id(self, route_id: str) -> Optional[ProcessorState]:
+        # fetch the processors to forward the state query to
+        forward_processor_state = self.fetch_processor_state_route(route_id=route_id)
+
+        # more than one route found, this must be a storage class implementation issue
+        if forward_processor_state and len(forward_processor_state) > 1:
+            raise ValueError(f'returned too many routes for given {route_id}, there is a problem with the '
+                             f'underlying storage class implementation {type(self)}')
+
+        # fetch the first processor state (aka route
+        return forward_processor_state[0] if forward_processor_state else None
 
     def fetch_processor_state_route(self,
                                     route_id: str = None,
