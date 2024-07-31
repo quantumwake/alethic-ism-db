@@ -678,7 +678,7 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
         if not processor_id:
             raise ValueError(f'processor id cannot be empty or null')
 
-        self.execute_update(
+        return self.execute_update(
             table="processor",
             update_values={
                 "status": status.value
