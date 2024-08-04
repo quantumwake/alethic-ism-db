@@ -3,7 +3,7 @@ from core.processor_state import (
     StateConfigLM,
     State,
     StateConfig,
-    StateDataKeyDefinition, StateDataColumnDefinition
+    StateDataKeyDefinition, StateDataColumnDefinition, StateConfigStream
 )
 
 from core.utils.state_utils import validate_processor_status_change
@@ -26,6 +26,20 @@ from tests.mock_data import (
 
 state_id = "fa000000-0000-0000-0000-0000000000fa"
 
+def test_state_config_stream():
+
+    state_config_stream = StateConfigStream(
+        name="test stream state",
+        storage_class="stream",
+        url="protocol://domain/{state_id}"
+    )
+
+    state = State(
+        state_id="hello world, yet another random stream state",
+        config=state_config_stream,
+        state_type="StateConfigStream"
+    )
+    state.state_type = "StateConfigStream"
 
 def test_state_key_definition_delete():
     state_id = "fa000000-0000-0000-0000-0000000000fa"

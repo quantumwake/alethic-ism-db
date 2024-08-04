@@ -10,7 +10,7 @@ from core.base_model import (
     UserProject,
     UserProfile,
     WorkflowNode,
-    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, ProcessorStatusCode, MonitorLogEvent
+    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, ProcessorStatusCode, MonitorLogEvent, UsageUnit
 )
 
 from core.processor_state import (
@@ -21,7 +21,7 @@ from core.processor_state import (
     StateDataColumnDefinition,
     StateDataRowColumnData,
     StateDataColumnIndex,
-    InstructionTemplate, StateConfigCode, StateConfigVisual
+    InstructionTemplate, StateConfigCode, StateConfigVisual, BaseStateConfig, StateConfigStream
 )
 
 # import interfaces relevant to the storage subsystem
@@ -36,7 +36,7 @@ from core.processor_state_storage import (
     TemplateStorage,
     WorkflowStorage,
     UserProjectStorage,
-    UserProfileStorage, MonitorLogEventStorage, StateMachineStorage
+    UserProfileStorage, MonitorLogEventStorage, StateMachineStorage, UsageStorage
 )
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
@@ -644,6 +644,64 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
 
         return template
 
+class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccess):
+    def insert_usage_unit(self, usage_unit: UsageUnit):
+        raise NotImplementedError()
+        # try:
+        #     conn = self.create_connection()
+        #     with (conn.cursor() as cursor):
+        #         sql = """
+        #             insert into usage (
+        #                 transaction_time,
+        #                 provider_id,
+        #                 route_id,
+        #                 unit_type,
+        #                 unit_count,
+        #                 unit_cost,
+        #                 unit_total
+        #             ) values (
+        #                 %s, %s,
+        #                 %s, %s,
+        #                 %s, %s,
+        #                 %s, %s)
+        #             RETURNING id, transaction_time
+        #         """
+        #         #
+        #         # id: Optional[int] = None  # serial id
+        #         # transaction_time: Optional[datetime.datetime] = None
+        #         # project_id: str
+        #         # unit_type: UsageUnitType = UsageUnitType.TOKEN
+        #         # unit_count: int
+        #         # unit_cost: float
+        #         # unit_total: float
+        #         # reference_id: Optional[str] = None
+        #         # reference_label: Optional[str] = None
+        #
+        #         cursor.execute(sql, [
+        #             usage_unit.transaction_time,
+        #             usage_unit.,
+        #             usage_unit.transaction_time,
+        #             usage_unit.transaction_time,
+        #             usage_unit.transaction_time,
+        #             usage_unit.transaction_time,
+        #             usage_unit.transaction_time,
+        #         ])
+        #
+        #         # fetch the id from the returning sql statement
+        #         returned = cursor.fetchone()
+        #         monitor_log_event.log_id = returned[0]  # serial id / sequence
+        #         monitor_log_event.log_time = returned[1]  # log time
+        #
+        #     conn.commit()
+        #     return monitor_log_event
+        # except Exception as e:
+        #     logging.error(e)
+        #     raise e
+        # finally:
+        #     self.release_connection(conn)
+
+    def fetch_usage_units(self, project_id: str):
+        raise NotImplementedError()
 
 class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
 
@@ -1181,6 +1239,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
     def insert_state_primary_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
+
+        if isinstance(state.config, BaseStateConfig):
+            return []
+
         primary_key_definition = state.config.primary_key
         return self.insert_state_key_definition(
             state=state,
@@ -1189,6 +1251,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
     def insert_query_state_inheritance_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
+
+        if isinstance(state.config, BaseStateConfig):
+            return []
+
         query_state_inheritance = state.config.query_state_inheritance
         return self.insert_state_key_definition(
             state=state,
@@ -1197,6 +1263,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
     def insert_remap_query_state_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
+
+        if isinstance(state.config, BaseStateConfig):
+            return []
+
         remap_query_state_columns = state.config.remap_query_state_columns
         return self.insert_state_key_definition(
             state=state,
@@ -1205,6 +1275,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
     def insert_template_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
+
+        if isinstance(state.config, BaseStateConfig):
+            return []
+
         template_columns = state.config.template_columns
         return self.insert_state_key_definition(
             state=state,
@@ -1426,6 +1500,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         elif 'StateConfigVisual' == state_type:
             config = StateConfigVisual(
                 **general_attributes,
+                **config_attributes
+            )
+        elif 'StateConfigStream' == state_type:
+            config = StateConfigStream(
                 **config_attributes
             )
         elif 'StateConfigCode' == state_type:
@@ -1886,11 +1964,11 @@ class PostgresDatabaseStorage(StateMachineStorage):
             state_storage=StateDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_storage=ProcessorDatabaseStorage(database_url=database_url, incremental=incremental),
             processor_state_storage=ProcessorStateDatabaseStorage(database_url=database_url, incremental=incremental),
-            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url,
-                                                                        incremental=incremental),
+            processor_provider_storage=ProcessorProviderDatabaseStorage(database_url=database_url, incremental=incremental),
             workflow_storage=WorkflowDatabaseStorage(database_url=database_url, incremental=incremental),
             template_storage=TemplateDatabaseStorage(database_url=database_url, incremental=incremental),
             user_profile_storage=UserProfileDatabaseStorage(database_url=database_url, incremental=incremental),
             user_project_storage=UserProjectDatabaseStorage(database_url=database_url, incremental=incremental),
-            monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url, incremental=incremental)
+            monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url=database_url, incremental=incremental),
+            usage_storage=UsageDatabaseStorage(database_url=database_url, incremental=incremental)
         )
