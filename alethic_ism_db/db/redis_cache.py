@@ -1,6 +1,9 @@
-from typing import Optional
+from typing import Optional, List
 
 import redis
+from core.base_model import SessionMessage
+
+from .processor_state_db_storage import SessionDatabaseStorage
 
 
 class RedisCache:
@@ -16,7 +19,6 @@ class RedisCache:
 
     def delete(self, key: str):
         self.redis_client.delete(key)
-
 
 
 class CachedSessionStorage(SessionDatabaseStorage):

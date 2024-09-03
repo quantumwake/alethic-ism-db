@@ -153,11 +153,17 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
 ('image/models/openai/dall-e-2', 'OpenAI', 'dall-e-2', 'ImageProcessing'),
 ('image/models/openai/dall-e-3', 'OpenAI', 'dall-e-3', 'ImageProcessing'),
+('language/models/llama/llama3.1-8b', 'LLama', 'llama3.1-8b', 'NaturalLanguageProcessing'),
+('language/models/llama/llama3.1-705b', 'LLama', 'llama3.1-70b', 'NaturalLanguageProcessing'),
+('language/models/llama/llama3.1-405b', 'LLama', 'llama3.1-405b', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
+('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-3-5-sonnet-20240620', 'Anthropic', 'claude-3-5-sonnet-20240620', 'NaturalLanguageProcessing'),
 ('data/transformers/mixer/state-coalescer-1.0', 'State Coalescer', 'state-coalescer-1.0', 'DataTransformation'),
+('data/transformers/mixer/state-composite-1.0', 'State Coalescer', 'state-composite-1.0', 'DataTransformation'),
 ('data/transformers/sampler/state-ensembler-1.0', 'State Ensembler', 'state-ensembler-1.0', 'DataTransformation'),
 ('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing')
 ON CONFLICT DO NOTHING;
@@ -255,3 +261,75 @@ BEGIN
     RETURN result;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- auto-generated definition
+drop type if exists usage_unit_type cascade;
+create type usage_unit_type as enum ('TOKEN', 'COMPUTE');
+
+drop type if exists usage_unit_subtype cascade;
+create type usage_unit_subtype as enum ('INPUT', 'OUTPUT');
+
+-- alter type usage_unit_type owner to postgres;
+
+drop table if exists usage;
+
+-- drop table if exists usage;
+create table if not exists usage
+(
+    id serial primary key,
+    transaction_time timestamp,
+    project_id varchar(36) not null references user_project (project_id),
+
+    -- resource information (e.g. a processor or a datasource
+    resource_id varchar(255) not null,      -- a processor id, or a datasource id, or a compute node id, or something else that we want to bill on
+    resource_type varchar(255) not null,    -- the type of resource this is, generally a processor or a datasource, or storage, etc.
+    unit_type        usage_unit_type            not null,
+    unit_subtype    usage_unit_subtype            not null,
+    unit_count       int          default 0 not null,
+    metadata    text null
+);
+
+create index usage_project_idx on usage (project_id);
+create index user_project_user_id_idx on user_project (user_id)
+
+
+
+---
+
+drop table if exists session cascade;
+create table session (
+    session_id varchar(36) not null primary key,
+    created_date    timestamp not null,
+    owner_user_id   varchar(36) not null references user_profile (user_id)
+);
+
+drop table if exists session_message cascade;
+create table session_message (
+    message_id serial not null primary key,
+    session_id varchar(36) not null references session (session_id),
+    user_id varchar(36) not null references user_profile (user_id),
+    original_content text null,
+    executed_content text null,
+    message_date timestamp not null
+);
+
+-- auto-generated definition
+drop type if exists user_session_access_level cascade;
+create type user_session_access_level as enum ('default', 'admin');
+
+drop table if exists user_session_access cascade;
+create table user_session_access (
+    user_id varchar(36) not null references user_profile (user_id),
+    session_id varchar(36) not null references session (session_id),
+    access_level user_session_access_level not null default 'default',
+    access_date timestamp not null
+);
+
+
+alter table user_profile add column email varchar(255) null;
+alter table user_profile add column name varchar(255) null;
+alter table user_profile add column created_date timestamp not null default current_timestamp;
+alter table user_project add column created_date timestamp not null default current_timestamp;
+
+

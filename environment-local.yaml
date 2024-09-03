@@ -1,6 +1,5 @@
 name: alethic-ism-db
 channels:
-  - file:///app/conda/env/local_channel
   - pytorch
   - conda-forge
   - defaults
@@ -14,7 +13,5 @@ dependencies:
   - nltk
   - redis-py
   - pytorch
-  - pytest
-  - nats-py
   - restrictedpython
-  - alethic-ism-core 
+  - alethic-ism-core

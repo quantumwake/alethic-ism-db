@@ -280,7 +280,9 @@ def create_mock_state_for_incremental_save_add_more_rows(state: State):
 def create_user_profile(user_id: str = None) -> UserProfile:
     user_id = "f401db9b-50fd-4960-8661-de3e7c2f9092" if not user_id else user_id
     user_profile = UserProfile(
-        user_id=user_id
+        user_id=user_id,
+        email="hello@world.com",
+        name="the hello world man"
     )
 
     return db_storage.insert_user_profile(user_profile=user_profile)

@@ -1,3 +1,5 @@
+import datetime as dt
+import os
 import uuid
 
 from psycopg2 import pool
@@ -10,7 +12,8 @@ from core.base_model import (
     UserProject,
     UserProfile,
     WorkflowNode,
-    WorkflowEdge, ProcessorProperty, ProcessorStateDetail, ProcessorStatusCode, MonitorLogEvent, UsageUnit
+    WorkflowEdge, ProcessorProperty, ProcessorStatusCode, MonitorLogEvent,
+    UsageReport, Session, SessionMessage
 )
 
 from core.processor_state import (
@@ -36,12 +39,16 @@ from core.processor_state_storage import (
     TemplateStorage,
     WorkflowStorage,
     UserProjectStorage,
-    UserProfileStorage, MonitorLogEventStorage, StateMachineStorage, UsageStorage
+    UserProfileStorage, MonitorLogEventStorage, StateMachineStorage, UsageStorage, RedisSessionStorage, FieldConfig,
+    SessionStorage
 )
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
 
 logging = log.getLogger(__name__)
+
+MIN_DB_CONNECTIONS = int(os.environ.get("MIN_DB_CONNECTIONS", 1))
+MAX_DB_CONNECTIONS = int(os.environ.get("MAX_DB_CONNECTIONS", 1))
 
 
 class SQLNull:
@@ -61,7 +68,7 @@ class BaseDatabaseAccess:
                             f'otherwise')
 
         # self.last_data_index = 0
-        self.connection_pool = pool.SimpleConnectionPool(1, 10, database_url)
+        self.connection_pool = pool.SimpleConnectionPool(MIN_DB_CONNECTIONS, MAX_DB_CONNECTIONS, database_url)
 
     class SqlStatement:
 
@@ -169,6 +176,65 @@ class BaseDatabaseAccess:
         finally:
             self.release_connection(conn)
 
+    from typing import Dict
+
+    from typing import List, Callable, Optional, Any
+
+    def execute_query_grouped(
+            self,
+            base_sql: str,
+            conditions_and_grouping: List[FieldConfig],  # List of FieldConfig objects
+            mapper: Callable[[Dict], Any]
+    ) -> Optional[List[Any]]:
+        """
+        Generic function to execute SQL with dynamic SELECT, WHERE, and GROUP BY clauses,
+        ensuring that all dynamic values are passed as parameters to prevent SQL injection.
+
+        :param base_sql: The base SQL query before WHERE and GROUP BY clauses.
+        :param conditions_and_grouping: List of FieldConfig objects defining field configurations.
+        :param mapper: Function to map the result rows to the desired format.
+        :return: Optional list of mapped results.
+        """
+        conn = self.create_connection()
+        params = []
+        where_clauses = []
+        group_by_fields = []
+        select_fields = []
+
+        # Iterate through the conditions_and_grouping list to build WHERE and GROUP BY clauses
+        for field_config in conditions_and_grouping:
+            if field_config.use_in_where and field_config.value is not None:
+                where_clauses.append(f"{field_config.field_name} = %s")
+                params.append(field_config.value)
+            if field_config.use_in_group_by:
+                group_by_fields.append(field_config.field_name)
+                select_fields.append(field_config.field_name)
+
+        # Append WHERE clause to SQL
+        if where_clauses:
+            base_sql += " WHERE " + " AND ".join(where_clauses)
+
+        # Add aggregation fields to SELECT
+        select_fields += ["SUM(unit_count) AS total", "0.0 AS total_cost"]
+
+        # Construct the final SQL query
+        final_sql = f"SELECT {', '.join(select_fields)} {base_sql}"
+
+        if group_by_fields:
+            final_sql += " GROUP BY " + ", ".join(group_by_fields)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(final_sql, params)  # Safe parameterized query execution
+                rows = cursor.fetchall()
+                results = [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
+                return results if results else None
+        except Exception as e:
+            logging.error(f"Database query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
     def execute_query_many(self, sql: str, conditions: dict, mapper: Callable) -> Optional[List[Any]]:
         conn = self.create_connection()
         params = []
@@ -228,14 +294,17 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccess):
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO user_profile (user_id) 
-                    VALUES (%s)
+                    INSERT INTO user_profile (user_id, email, name, created_date) 
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (user_id) 
                     DO NOTHING
                 """
 
                 values = [
-                    user_profile.user_id
+                    user_profile.user_id,
+                    user_profile.email,
+                    user_profile.name,
+                    dt.datetime.utcnow()
                 ]
                 cursor.execute(sql, values)
 
@@ -280,8 +349,8 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO user_project (project_id, project_name, user_id) 
-                    VALUES (%s, %s, %s)
+                    INSERT INTO user_project (project_id, project_name, user_id, created_date) 
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (project_id) 
                     DO UPDATE SET project_name = EXCLUDED.project_name
                 """
@@ -292,7 +361,8 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
                 values = [
                     user_project.project_id,
                     user_project.project_name,
-                    user_project.user_id
+                    user_project.user_id,
+                    dt.datetime.utcnow()
                 ]
                 cursor.execute(sql, values)
 
@@ -610,7 +680,8 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
                              ON target.template_id = source.template_id 
                           WHEN MATCHED THEN 
                               UPDATE SET 
-                                template_path = source.template_path, 
+                                template_path = source.template_path,
+                                template_type = source.template_type, 
                                 template_content = source.template_content
                           WHEN NOT MATCHED THEN 
                               INSERT (template_id, template_path, template_content, template_type, project_id)
@@ -644,67 +715,178 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
 
         return template
 
-class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccess):
-    def insert_usage_unit(self, usage_unit: UsageUnit):
-        raise NotImplementedError()
-        # try:
-        #     conn = self.create_connection()
-        #     with (conn.cursor() as cursor):
-        #         sql = """
-        #             insert into usage (
-        #                 transaction_time,
-        #                 provider_id,
-        #                 route_id,
-        #                 unit_type,
-        #                 unit_count,
-        #                 unit_cost,
-        #                 unit_total
-        #             ) values (
-        #                 %s, %s,
-        #                 %s, %s,
-        #                 %s, %s,
-        #                 %s, %s)
-        #             RETURNING id, transaction_time
-        #         """
-        #         #
-        #         # id: Optional[int] = None  # serial id
-        #         # transaction_time: Optional[datetime.datetime] = None
-        #         # project_id: str
-        #         # unit_type: UsageUnitType = UsageUnitType.TOKEN
-        #         # unit_count: int
-        #         # unit_cost: float
-        #         # unit_total: float
-        #         # reference_id: Optional[str] = None
-        #         # reference_label: Optional[str] = None
-        #
-        #         cursor.execute(sql, [
-        #             usage_unit.transaction_time,
-        #             usage_unit.,
-        #             usage_unit.transaction_time,
-        #             usage_unit.transaction_time,
-        #             usage_unit.transaction_time,
-        #             usage_unit.transaction_time,
-        #             usage_unit.transaction_time,
-        #         ])
-        #
-        #         # fetch the id from the returning sql statement
-        #         returned = cursor.fetchone()
-        #         monitor_log_event.log_id = returned[0]  # serial id / sequence
-        #         monitor_log_event.log_time = returned[1]  # log time
-        #
-        #     conn.commit()
-        #     return monitor_log_event
-        # except Exception as e:
-        #     logging.error(e)
-        #     raise e
-        # finally:
-        #     self.release_connection(conn)
 
-    def fetch_usage_units(self, project_id: str):
+class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccess):
+    from typing import List, Optional
+
+    def fetch_usage_report(
+            self,
+            user_id: FieldConfig,
+            project_id: Optional[FieldConfig] = None,
+            resource_id: Optional[FieldConfig] = None,
+            resource_type: Optional[FieldConfig] = None,
+            year: Optional[FieldConfig] = None,
+            month: Optional[FieldConfig] = None,
+            day: Optional[FieldConfig] = None,
+            unit_type: Optional[FieldConfig] = None,
+            unit_subtype: Optional[FieldConfig] = None
+    ) -> List[UsageReport]:
+        base_sql = "FROM usage u INNER JOIN user_project up ON up.project_id = u.project_id"
+
+        # List of FieldConfig objects
+        conditions_and_grouping = [
+            user_id,
+            project_id if project_id else None,
+            resource_id if resource_id else None,
+            resource_type if resource_type else None,
+            year if year else None,
+            month if month else None,
+            day if day else None,
+            unit_type if unit_type else None,
+            unit_subtype if unit_subtype else None
+        ]
+
+        # Remove None entries (for optional fields that were not provided)
+        conditions_and_grouping = [entry for entry in conditions_and_grouping if entry is not None]
+
+        # Execute the query with dynamic conditions and grouping
+        return self.execute_query_grouped(base_sql, conditions_and_grouping, lambda row: UsageReport(**row))
+
+
+
+class SessionDatabaseStorage(SessionStorage, BaseDatabaseAccess):
+
+    def create_session(self, user_id: str) -> Session:
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""INSERT INTO session (session_id, created_date, owner_user_id)
+                          VALUES (%s, %s, %s)
+                              ON CONFLICT (session_id) 
+                              DO NOTHING
+                """.strip()
+
+                session = Session(
+                    session_id=str(uuid.uuid4()),
+                    created_date=dt.datetime.utcnow(),
+                    owner_user_id=user_id
+                )
+
+                cursor.execute(sql, [
+                    session.session_id,
+                    session.created_date,
+                    session.owner_user_id
+                ])
+
+                conn.commit()
+                return session
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_session(self, user_id: str , session_id: str) -> Optional[Session]:
+        sql = """
+            select * from session 
+             where (session_id = %s and owner_user_id = %s) 
+                or session_id in (select session_id 
+                                    from user_session_access 
+                                   where session_id = %s and user_id = %s)
+        """.strip()
+
+        session = self.execute_query_fixed(
+            sql=sql,
+            params=[session_id, user_id, session_id, user_id],
+            mapper=lambda row: Session(**row)
+        )
+
+        if not session:
+            return None
+
+        if len(session) == 1:
+            return session[0]
+
+        raise ValueError(f'invalid sessions returned for given session: {session_id},  user: {user_id}')
+
+    def fetch_user_sessions(self, user_id: str) -> Optional[List[Session]]:
+        sql = """
+            select * from session 
+             where (owner_user_id = %s) 
+                or session_id in (select session_id 
+                                    from user_session_access 
+                                   where user_id = %s)
+        """.strip()
+
+        sessions = self.execute_query_fixed(
+            sql=sql,
+            params=[user_id, user_id],
+            mapper=lambda row: Session(**row)
+        )
+
+        return sessions
+
+    def user_join_session(self, user_id: str, session_id: str) -> bool:
         raise NotImplementedError()
+
+    def user_unjoin_session(self, user_id: str, session_id:str) -> bool:
+        raise NotImplementedError()
+
+    def fetch_user_session_access(self, user_id: str, session_id: str) -> Session:
+        session = self.fetch_session(user_id=user_id, session_id=session_id)
+        if not session:
+            logging.critical(f"attempt access to {session_id} from user {user_id} but no association found")
+            return None
+
+        return session
+
+    def insert_session_message(self, message: SessionMessage) -> SessionMessage:
+        session = self.fetch_user_session_access(user_id=message.user_id, session_id=message.session_id)
+        if not session:
+            return None
+
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""
+                    INSERT INTO session_message (session_id, user_id, original_content, executed_content, message_date)
+                    VALUES (%s, %s, %s, %s, %s) RETURNING message_id
+                """.strip()
+
+                cursor.execute(sql, [
+                    message.session_id,
+                    message.user_id,
+                    message.original_content,
+                    message.executed_content,
+                    message.message_date
+                ])
+
+                message.message_id = cursor.fetchone()[0]
+
+            conn.commit()
+            return message
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_session_messages(self, user_id: str, session_id: str) -> Optional[List[SessionMessage]]:
+        if not self.fetch_user_session_access(user_id=user_id, session_id=session_id):
+            return None
+
+        return self.execute_query_many(
+            sql="SELECT * FROM session_message",
+            conditions={
+                "session_id": session_id
+            }, mapper=lambda row: SessionMessage(**row))
+
+    def delete_session(self, session_id: str) -> int:
+        raise NotImplementedError()
+
+
 
 class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
-
     def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
         processors = self.execute_query_many(
             sql="SELECT * FROM processor",
@@ -747,7 +929,6 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
         )
 
     def insert_processor(self, processor: Processor) -> Processor:
-
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
@@ -912,7 +1093,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
                 'id': state_id
             },
             mapper=lambda row: State(**row))
-
 
     def insert_state(self, state: State, config_uuid=False):
         conn = self.create_connection()
@@ -1629,10 +1809,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
         return self.execute_delete_query(
             sql="DELETE FROM state_column",
-                conditions=[{
-                    "id": column_id,
-                    "state_id": state_id
-                }])
+            conditions=[{
+                "id": column_id,
+                "state_id": state_id
+            }])
 
     def delete_state_column_data(self, state_id, column_id: int = None) -> int:
 
@@ -1647,7 +1827,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             raise e
         finally:
             self.release_connection(conn)
-
 
     def delete_state_data(self, state_id: str):
         self.delete_state_column_data_mapping(state_id=state_id)
@@ -1711,7 +1890,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
             self.insert_remap_query_state_columns_key_definition(state=state)
             self.insert_template_columns_key_definition(state=state)
         else:
-
             state_id = create_state_id_by_state(state)
 
             # the incremental function returns the list of state keys that need to be applied
@@ -1914,8 +2092,6 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess)
             }
         )
 
-
-
     def insert_monitor_log_event(self, monitor_log_event: MonitorLogEvent) -> MonitorLogEvent:
 
         try:
@@ -1970,5 +2146,17 @@ class PostgresDatabaseStorage(StateMachineStorage):
             user_profile_storage=UserProfileDatabaseStorage(database_url=database_url, incremental=incremental),
             user_project_storage=UserProjectDatabaseStorage(database_url=database_url, incremental=incremental),
             monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url=database_url, incremental=incremental),
-            usage_storage=UsageDatabaseStorage(database_url=database_url, incremental=incremental)
+            usage_storage=UsageDatabaseStorage(database_url=database_url, incremental=incremental),
+            session_storage=SessionDatabaseStorage(database_url=database_url, incremental=incremental)
+        )
+
+
+class PostgresDatabaseWithRedisCacheStorage(PostgresDatabaseStorage):
+    def __init__(self, database_url: str, incremental: bool = True, *args, **kwargs):
+        super().__init__(database_url=database_url, incremental=incremental, **kwargs)
+        # the storage system for sessions is redis
+        self._delegate_session_storage = RedisSessionStorage(
+            host=os.environ.get("REDIS_HOST", "localhost"),
+            port=os.environ.get("REDIS_PORT", 6379),
+            password=os.environ.get("REDIS_PASS", None)
         )
