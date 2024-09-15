@@ -3,18 +3,17 @@ channels:
   - file:///app/conda/env/local_channel
   - pytorch
   - conda-forge
-  - defaults
 dependencies:
   - python=3.11
   - python-dotenv
   - pyyaml
   - pydantic
-  - psycopg2
-  - transformers
-  - nltk
+#  - psycopg2
+#  - transformers
+#  - nltk
   - redis-py
-  - pytorch
+#  - pytorch
   - pytest
-  - nats-py
-  - restrictedpython
+#  - nats-py
+#  - restrictedpython
   - alethic-ism-core 

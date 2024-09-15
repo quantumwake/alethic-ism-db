@@ -285,7 +285,55 @@ class BaseDatabaseAccess:
             self.release_connection(conn)
 
 
-class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccess):
+class BaseDatabaseAccessSinglePool(BaseDatabaseAccess):
+    # Class-level dictionary to store connection pools
+    _pools = {}
+
+    def __init__(self, database_url, incremental: bool = False):
+        self.database_url = database_url
+        self.incremental = incremental
+
+        if incremental:
+            logging.warning(
+                'Using incremental updates is not thread-safe. '
+                'Please ensure to synchronize save_state(State) otherwise.'
+            )
+
+        # Use existing pool if available; otherwise, create and store a new one
+        if database_url in BaseDatabaseAccessSinglePool._pools:
+            self.connection_pool = BaseDatabaseAccessSinglePool._pools[database_url]
+        else:
+            self.connection_pool = pool.SimpleConnectionPool(
+                MIN_DB_CONNECTIONS, MAX_DB_CONNECTIONS, database_url
+            )
+            BaseDatabaseAccessSinglePool._pools[database_url] = self.connection_pool
+
+    def create_connection(self):
+        try:
+            conn = self.connection_pool.getconn()
+            if conn is None:
+                # Handle the case where no connection is available
+                logging.error('No available connection in the pool.')
+                raise Exception('No available connection in the pool.')
+            return conn
+        except Exception as e:
+            logging.error(f'Failed to create a connection: {e}')
+            raise
+
+    def release_connection(self, conn):
+        try:
+            # Check if the connection is valid before returning it to the pool
+            if conn:
+                self.connection_pool.putconn(conn)
+            else:
+                logging.warning('Attempted to release a null connection.')
+        except Exception as e:
+            logging.error(f'Failed to release connection: {e}')
+            # Optionally, you might want to close the connection if it cannot be returned
+            if conn:
+                conn.close()
+
+class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePool):
 
     def insert_user_profile(self, user_profile: UserProfile):
         conn = self.create_connection()
@@ -318,7 +366,7 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccess):
         return user_profile
 
 
-class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
+class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccessSinglePool):
 
     def delete_user_project(self, project_id):
         try:
@@ -341,6 +389,33 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
             },
             mapper=lambda row: UserProject(**row)
         )
+
+    def associate_user_project(self, project_id: str, user_id: str):
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+
+                sql = """
+                    INSERT INTO user_project (project_id, user_id, created_date) 
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (project_id, user_id) 
+                    DO NOTHING
+                """
+
+                values = [
+                    project_id,
+                    user_id,
+                    dt.datetime.utcnow()
+                ]
+                cursor.execute(sql, values)
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
 
     def insert_user_project(self, user_project: UserProject):
         conn = self.create_connection()
@@ -385,7 +460,7 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccess):
         )
 
 
-class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
+class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccessSinglePool):
 
     def delete_workflow_node(self, node_id):
         return self.execute_delete_query(
@@ -518,7 +593,7 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccess):
         return edge
 
 
-class ProcessorProviderDatabaseStorage(ProcessorProviderStorage, BaseDatabaseAccess):
+class ProcessorProviderDatabaseStorage(ProcessorProviderStorage, BaseDatabaseAccessSinglePool):
 
     def fetch_processor_provider(self, id: str) -> Optional[ProcessorProvider]:
         return self.execute_query_one(
@@ -633,7 +708,7 @@ class ProcessorProviderDatabaseStorage(ProcessorProviderStorage, BaseDatabaseAcc
             self.release_connection(conn)
 
 
-class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
+class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccessSinglePool):
 
     def fetch_templates(self, project_id: str = None) -> Optional[List[InstructionTemplate]]:
         return self.execute_query_many(
@@ -716,7 +791,7 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccess):
         return template
 
 
-class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccess):
+class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
     from typing import List, Optional
 
     def fetch_usage_report(
@@ -754,7 +829,7 @@ class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccess):
 
 
 
-class SessionDatabaseStorage(SessionStorage, BaseDatabaseAccess):
+class SessionDatabaseStorage(SessionStorage, BaseDatabaseAccessSinglePool):
 
     def create_session(self, user_id: str) -> Session:
         try:
@@ -886,7 +961,7 @@ class SessionDatabaseStorage(SessionStorage, BaseDatabaseAccess):
 
 
 
-class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
+class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
     def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
         processors = self.execute_query_many(
             sql="SELECT * FROM processor",
@@ -895,6 +970,9 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
                 'provider_id': provider_id
             },
             mapper=lambda row: Processor(**row))
+
+        if not processors:
+            return []
 
         for p in processors:
             p.properties = self.fetch_processor_properties(processor_id=p.id)
@@ -1026,7 +1104,7 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccess):
         )
 
 
-class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
+class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
     def fetch_state_data_by_column_id(self, column_id: int) -> Optional[StateDataRowColumnData]:
         conn = self.create_connection()
@@ -1420,7 +1498,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
     def insert_state_primary_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
 
-        if isinstance(state.config, BaseStateConfig):
+        if type(state.config) is BaseStateConfig:
             return []
 
         primary_key_definition = state.config.primary_key
@@ -1432,7 +1510,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
     def insert_query_state_inheritance_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
 
-        if isinstance(state.config, BaseStateConfig):
+        if type(state.config) is BaseStateConfig:
             return []
 
         query_state_inheritance = state.config.query_state_inheritance
@@ -1444,7 +1522,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
     def insert_remap_query_state_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
 
-        if isinstance(state.config, BaseStateConfig):
+        if type(state.config) is BaseStateConfig:
             return []
 
         remap_query_state_columns = state.config.remap_query_state_columns
@@ -1456,7 +1534,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
     def insert_template_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition]:
 
-        if isinstance(state.config, BaseStateConfig):
+        if type(state.config) is BaseStateConfig:
             return []
 
         template_columns = state.config.template_columns
@@ -1739,8 +1817,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
 
         # load additional details about the state
         state.columns = self.load_state_columns(state_id=state_id)
-        state.data = self.load_state_data(columns=state.columns)
-        state.mapping = self.load_state_data_mappings(state_id=state_id)
+        state.data = self.load_state_data(columns=state.columns) if load_data else {}
+        state.mapping = self.load_state_data_mappings(state_id=state_id) if load_data else {}
 
         return state
 
@@ -1905,7 +1983,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccess):
         return state
 
 
-class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAccess):
+class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAccessSinglePool):
 
     # def fetch_prcoessor_state_details(self, processor_id, state_id, direction: ProcessorStateDirection, provider_id):
     #     return self.execute_query_many(
@@ -2049,7 +2127,7 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
             self.release_connection(conn)
 
 
-class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccess):
+class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessSinglePool):
 
     def fetch_monitor_log_events(
             self,

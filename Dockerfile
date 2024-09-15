@@ -1,5 +1,5 @@
 # Stage 1: Base Image with Miniconda
-FROM continuumio/miniconda3
+FROM continuumio/miniconda3:24.5.0-0
 
 # Set the working directory
 WORKDIR /app
@@ -18,8 +18,11 @@ WORKDIR /app/repo
 # Force all commands to run in bash
 SHELL ["/bin/bash", "--login", "-c"]
 
+#RUN conda install -n base conda-libmamba-solver -c conda-forge --override-channels
+#RUN conda config --set solver libmamba
+
 # install the conda build package in base
-RUN conda install -y conda-build
+RUN conda install -y conda-build -c conda-forge --override-channels
 
 # Initialize the conda environment
 RUN conda env create -f environment.yaml
