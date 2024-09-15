@@ -293,16 +293,16 @@ class BaseDatabaseAccessSinglePool(BaseDatabaseAccess):
         self.database_url = database_url
         self.incremental = incremental
 
-        if incremental:
-            logging.warning(
-                'Using incremental updates is not thread-safe. '
-                'Please ensure to synchronize save_state(State) otherwise.'
-            )
-
         # Use existing pool if available; otherwise, create and store a new one
         if database_url in BaseDatabaseAccessSinglePool._pools:
             self.connection_pool = BaseDatabaseAccessSinglePool._pools[database_url]
         else:
+            logging.info(f"establishing connection pool for with max connections: {MAX_DB_CONNECTIONS}")
+            if incremental:
+                logging.warning(
+                    'Using incremental updates is not thread-safe. '
+                    'Please ensure to synchronize save_state(State) otherwise.'
+                )
             self.connection_pool = pool.SimpleConnectionPool(
                 MIN_DB_CONNECTIONS, MAX_DB_CONNECTIONS, database_url
             )
