@@ -1501,6 +1501,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         if type(state.config) is BaseStateConfig:
             return []
 
+        if not state.config.primary_key:
+            logging.debug(f'no primary key defined for state_id: {state.id}, name: {state.config.name}')
+            return
+
         primary_key_definition = state.config.primary_key
         return self.insert_state_key_definition(
             state=state,
@@ -1512,6 +1516,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         if type(state.config) is BaseStateConfig:
             return []
+
+        if not state.config.query_state_inheritance:
+            logging.debug(f'no query_state_inheritance defined for state_id: {state.id}, name: {state.config.name}')
+            return
 
         query_state_inheritance = state.config.query_state_inheritance
         return self.insert_state_key_definition(
@@ -1525,6 +1533,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         if type(state.config) is BaseStateConfig:
             return []
 
+        if not state.config.remap_query_state_columns:
+            logging.debug(f'no remap_query_state_columns defined for state_id: {state.id}, name: {state.config.name}')
+            return
+
         remap_query_state_columns = state.config.remap_query_state_columns
         return self.insert_state_key_definition(
             state=state,
@@ -1536,6 +1548,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         if type(state.config) is BaseStateConfig:
             return []
+
+        if not state.config.template_columns:
+            logging.debug(f'no template_columns defined for state_id: {state.id}, name: {state.config.name}')
+            return
 
         template_columns = state.config.template_columns
         return self.insert_state_key_definition(

@@ -148,6 +148,7 @@ CREATE TABLE processor_provider (
     project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
 );
 
+
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
 ('language/models/openai/o1-preview', 'OpenAI', 'o1-preview', 'NaturalLanguageProcessing'),
@@ -156,6 +157,8 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/llama/llama3.1-8b', 'LLama', 'llama3.1-8b', 'NaturalLanguageProcessing'),
 ('language/models/llama/llama3.1-705b', 'LLama', 'llama3.1-70b', 'NaturalLanguageProcessing'),
 ('language/models/llama/llama3.1-405b', 'LLama', 'llama3.1-405b', 'NaturalLanguageProcessing'),
+('language/models/google/gemini-1.5-flash', 'Google', 'gemini-1.5-flash', 'NaturalLanguageProcessing'),
+('language/models/google/gemini-1.5-pro-001', 'Google', 'gemini-1.5-pro-001', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
 ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
@@ -333,3 +336,22 @@ alter table user_profile add column created_date timestamp not null default curr
 alter table user_project add column created_date timestamp not null default current_timestamp;
 
 
+
+create index processor_state_processor_direction_idx on processor_state (processor_id, direction);
+create index processor_state_state_direction_idx on processor_state (state_id, direction);
+create index processor_state_processor on processor_state (processor_id);
+create index processor_state_state on processor_state (state_id);
+
+create index state_project_idx on state (project_id);
+create index processor_project_idx on processor (project_id);
+create index state_column_state_idx on state_column (state_id);
+
+create index state_config_state_idx on state_config (state_id);
+create index template_project_idx on template (project_id);
+create index workflow_node_project_idx on workflow_node (project_id);
+create index state_column_key_definition_state_idx on state_column_key_definition (state_id);
+create index state_column_key_definition_state_idx on state_column_key_definition (state_id);
+create index state_column_data_mapping_state_idx on state_column_data_mapping (state_id);
+create index monitor_log_event_user_id on monitor_log_event (user_id);
+create index monitor_log_event_project_id on monitor_log_event (project_id);
+create index monitor_log_event_user_and_project_id on monitor_log_event (user_id, project_id);
