@@ -13,7 +13,7 @@ from core.base_model import (
     UserProfile,
     WorkflowNode,
     WorkflowEdge, ProcessorProperty, ProcessorStatusCode, MonitorLogEvent,
-    UsageReport, Session, SessionMessage
+    UsageReport, Session, SessionMessage, UsageReportInstant
 )
 
 from core.processor_state import (
@@ -333,7 +333,16 @@ class BaseDatabaseAccessSinglePool(BaseDatabaseAccess):
             if conn:
                 conn.close()
 
+
 class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePool):
+
+    def fetch_user_profile(self, user_id: str) -> Optional[UserProfile]:
+        users = self.execute_query_many(
+            sql="select * from user_profile",
+            conditions={"user_id": user_id},
+            mapper=lambda row: UserProfile(**row)
+        )
+        return users[0] if users else None
 
     def insert_user_profile(self, user_profile: UserProfile):
         conn = self.create_connection()
@@ -342,16 +351,19 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePoo
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO user_profile (user_id, email, name, created_date) 
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO user_profile (user_id, email, name, max_agentic_units, created_date) 
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) 
-                    DO NOTHING
+                    DO UPDATE SET 
+                        email = EXCLUDED.email,
+                        name = EXCLUDED.name
                 """
 
                 values = [
                     user_profile.user_id,
                     user_profile.email,
                     user_profile.name,
+                    user_profile.max_agentic_units,
                     dt.datetime.utcnow()
                 ]
                 cursor.execute(sql, values)
@@ -792,7 +804,6 @@ class TemplateDatabaseStorage(TemplateStorage, BaseDatabaseAccessSinglePool):
 
 
 class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
-    from typing import List, Optional
 
     def fetch_usage_report(
             self,
@@ -806,7 +817,8 @@ class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
             unit_type: Optional[FieldConfig] = None,
             unit_subtype: Optional[FieldConfig] = None
     ) -> List[UsageReport]:
-        base_sql = "FROM usage u INNER JOIN user_project up ON up.project_id = u.project_id"
+        # base_sql = "FROM usage_v u INNER JOIN user_project up ON up.project_id = u.project_id"
+        base_sql = "FROM usage_v"
 
         # List of FieldConfig objects
         conditions_and_grouping = [

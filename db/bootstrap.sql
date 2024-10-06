@@ -240,6 +240,27 @@ SELECT sc.*, sd.* FROM state_column sc
    ON sc.id = sd.column_id
 ORDER BY state_id, data_index, column_id;
 
+-- USAGE VIEW FOR USAGE TABLE (extracts year, month, day, hour, minute, second from transaction_time)
+CREATE OR REPLACE VIEW usage_v
+AS
+SELECT
+    extract(year from transaction_time) as year,
+    extract(month from transaction_time) as month,
+    extract(day from transaction_time) as day,
+    extract(hour from transaction_time) as hour,
+    extract(minute from transaction_time) as minute,
+    extract(second from transaction_time) as second,
+    up.user_id,
+    u.project_id,
+    u.resource_id,
+    u.resource_type,
+    u.unit_type,
+    u.unit_count
+ FROM usage u
+INNER JOIN user_project up
+  ON up.project_id = u.project_id;
+
+
 --- VALIDATION FUNCTION FOR COLUMN ID
 DROP FUNCTION IF EXISTS validate_column_id;
 CREATE OR REPLACE FUNCTION validate_column_id(new_id BIGINT, new_state_id VARCHAR)
