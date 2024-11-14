@@ -318,6 +318,28 @@ create index usage_project_idx on usage (project_id);
 create index user_project_user_id_idx on user_project (user_id)
 
 
+--- usage tables
+create table usage
+(
+    id               serial primary key,
+    transaction_time timestamp,
+    project_id       varchar(36)        not null references public.user_project,
+    resource_id      varchar(255)       not null,
+    resource_type    varchar(255)       not null,
+    unit_type        usage_unit_type    not null,
+    unit_subtype     usage_unit_subtype not null,
+    unit_count       integer default 0  not null,
+    metadata         text
+);
+
+-- audit logging table for various user functions
+create table audit (
+    partition varchar(128) not null,
+    reference varchar(128) not null,
+    action varchar(255) not null,
+    action_time timestamp not null default current_timestamp,
+    message text
+);
 
 ---
 

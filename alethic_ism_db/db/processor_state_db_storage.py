@@ -48,7 +48,7 @@ from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_d
 logging = log.getLogger(__name__)
 
 MIN_DB_CONNECTIONS = int(os.environ.get("MIN_DB_CONNECTIONS", 1))
-MAX_DB_CONNECTIONS = int(os.environ.get("MAX_DB_CONNECTIONS", 1))
+MAX_DB_CONNECTIONS = int(os.environ.get("MAX_DB_CONNECTIONS", 5))
 
 
 class SQLNull:
@@ -548,6 +548,19 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccessSinglePool):
                 "target_node_id": target_node_id
             }
         )
+
+    def delete_workflow_edges_by_node_id(self, node_id: str):
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """DELETE FROM workflow_edge WHERE source_node_id = %s OR target_node_id = %s"""
+                cursor.execute(sql, [node_id, node_id])
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
 
     def fetch_workflow_edges(self, project_id: str) -> Optional[List[WorkflowEdge]]:
         sql = """
@@ -1915,10 +1928,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         return self.execute_delete_query(
             sql="DELETE FROM state_column",
-            conditions=[{
+            conditions={
                 "id": column_id,
                 "state_id": state_id
-            }])
+            })
 
     def delete_state_column_data(self, state_id, column_id: int = None) -> int:
 
@@ -2093,6 +2106,14 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
             "DELETE FROM processor_state",
             conditions={
                 "id": route_id
+            }
+        )
+
+    def delete_processor_state_routes_by_state_id(self, state_id: str) -> int:
+        return self.execute_delete_query(
+            "DELETE FROM processor_state",
+            conditions={
+                "state_id": state_id
             }
         )
 

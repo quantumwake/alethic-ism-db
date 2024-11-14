@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.11 (alethic-ism-db)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11 (alethic-ism-db)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="$USER_HOME$/miniconda3/envs/alethic-ism-db/envs/alethic-ism-db" project-jdk-type="Python SDK" />
 </project>
