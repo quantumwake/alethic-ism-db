@@ -37,7 +37,8 @@ RUN echo "conda activate alethic-ism-db" > ~/.bashrc
 RUN conda info
 
 # Install necessary dependencies for the build process
-RUN conda install -y conda-build
+RUN conda install -y conda-build && \
+    conda install -c conda-forge libarchive
 
 # Run the build command (adjust as per your repo's requirements)
 RUN bash ./conda_build.sh --local-channel-path /app/conda/env/local_channel
