@@ -13,7 +13,7 @@ from core.base_model import (
     UserProfile,
     WorkflowNode,
     WorkflowEdge, ProcessorProperty, ProcessorStatusCode, MonitorLogEvent,
-    UsageReport, Session, SessionMessage, UsageReportInstant
+    UsageReport, Session, SessionMessage, UsageReportInstant, StateActionDefinition
 )
 
 from core.processor_state import (
@@ -40,7 +40,7 @@ from core.processor_state_storage import (
     WorkflowStorage,
     UserProjectStorage,
     UserProfileStorage, MonitorLogEventStorage, StateMachineStorage, UsageStorage, RedisSessionStorage, FieldConfig,
-    SessionStorage
+    SessionStorage, StateActionStorage
 )
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
@@ -2260,6 +2260,79 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessS
             self.release_connection(conn)
 
 
+class StateActionDatabaseStorage(BaseDatabaseAccessSinglePool, StateActionStorage):
+
+    def create_state_action(self, action: StateActionDefinition) -> StateActionDefinition:
+
+        try:
+            conn = self.create_connection()
+            with (conn.cursor() as cursor):
+                sql = """
+                    INSERT INTO state_action_definition (
+                        id,
+                        state_id,
+                        action_type,
+                        field,
+                        remote_url,
+                        created_date
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """
+
+                if not action.id:
+                    action.id = str(uuid.uuid4())
+
+                cursor.execute(sql, [
+                    action.id,
+                    action.state_id,
+                    action.action_type,
+                    action.field,
+                    action.remote_url,
+                    action.created_date,
+                ])
+
+            conn.commit()
+            return action
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_state_action(self, action_id: str) -> Optional[StateActionDefinition]:
+        return self.execute_query_one(
+            sql="select * from state_action_definition where id = %s",
+            conditions={
+                'id': action_id
+            },
+            mapper=lambda row: StateActionDefinition(**row)
+        )
+
+    def fetch_state_actions(self, state_id: str) -> Optional[List[StateActionDefinition]]:
+        return self.execute_query_many(
+            sql="select * from state_action_definition where state_id = %s",
+            conditions={
+                'state_id': state_id
+            },
+            mapper=lambda row: StateActionDefinition(**row)
+        )
+
+    def delete_state_actions(self, state_id: str) -> int:
+        return self.execute_delete_query(
+            "delete from state_action_definition",
+            conditions={
+                "state_id": state_id
+            }
+        )
+
+    def delete_state_action(self, action_id: str) -> int:
+        return self.execute_delete_query(
+            "delete from state_action_definition",
+            conditions={
+                "state_id": action_id
+            }
+        )
+
 class PostgresDatabaseStorage(StateMachineStorage):
 
     def __init__(self, database_url: str, incremental: bool = True, *args, **kwargs):
@@ -2274,7 +2347,8 @@ class PostgresDatabaseStorage(StateMachineStorage):
             user_project_storage=UserProjectDatabaseStorage(database_url=database_url, incremental=incremental),
             monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url=database_url, incremental=incremental),
             usage_storage=UsageDatabaseStorage(database_url=database_url, incremental=incremental),
-            session_storage=SessionDatabaseStorage(database_url=database_url, incremental=incremental)
+            session_storage=SessionDatabaseStorage(database_url=database_url, incremental=incremental),
+            state_action_storage=StateActionDatabaseStorage(database_url=database_url, incremental=incremental)
         )
 
 

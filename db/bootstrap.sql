@@ -137,6 +137,9 @@ INSERT INTO processor_class VALUES ('AudioProcessing');
 INSERT INTO processor_class VALUES ('DataAnalysis');
 INSERT INTO processor_class VALUES ('SignalProcessing');
 INSERT INTO processor_class VALUES ('MachineLearning');
+INSERT INTO processor_class VALUES ('Interaction')
+INSERT INTO processor_class values ('DatabaseProcessing');
+
 
 DROP TABLE IF EXISTS processor_provider cascade;
 CREATE TABLE processor_provider (
@@ -147,7 +150,6 @@ CREATE TABLE processor_provider (
     user_id varchar(36) NULL REFERENCES user_profile (user_id),
     project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
 );
-
 
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
@@ -168,7 +170,9 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
 ('data/transformers/mixer/state-coalescer-1.0', 'State Coalescer', 'state-coalescer-1.0', 'DataTransformation'),
 ('data/transformers/mixer/state-composite-1.0', 'State Coalescer', 'state-composite-1.0', 'DataTransformation'),
 ('data/transformers/sampler/state-ensembler-1.0', 'State Ensembler', 'state-ensembler-1.0', 'DataTransformation'),
-('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing')
+('data/source/sql-1.0', 'SQL', 'sql-1.0', 'DatabaseProcessing'),
+('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing'),
+('interaction/user/user-interaction', 'User Interaction', 'user-interaction-1.0', 'Interaction')
 ON CONFLICT DO NOTHING;
 
 drop type if exists processor_status cascade;
@@ -398,3 +402,20 @@ create index state_column_data_mapping_state_idx on state_column_data_mapping (s
 create index monitor_log_event_user_id on monitor_log_event (user_id);
 create index monitor_log_event_project_id on monitor_log_event (project_id);
 create index monitor_log_event_user_and_project_id on monitor_log_event (user_id, project_id);
+
+
+
+-- Create ENUM type for action_type
+CREATE TYPE action_type_enum AS ENUM ('slider', 'text', 'yes/no', 'dropdown');
+
+-- Create the main table
+CREATE TABLE state_action_definitions (
+    id varchar(36) PRIMARY KEY, -- Automatically generate a UUID if not provided
+    state_id varchar(36) NOT NULL,                       -- Foreign key, if needed, can be defined here
+    action_type action_type_enum NOT NULL,       -- ENUM type for action type
+    field varchar(255) not null,                 -- Optional field name
+    remote_url varchar(4000) DEFAULT null,            -- Defaults to FALSE if not provided
+    field_options JSON NOT NULL,                -- Field options as raw JSON
+    created_date TIMESTAMPTZ DEFAULT NOW()        -- Automatically set to current timestamp
+);
+create index state_action_definitions_state_idx on state_action_definitions (state_id);
