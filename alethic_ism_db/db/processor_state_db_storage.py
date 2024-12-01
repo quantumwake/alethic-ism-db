@@ -2,6 +2,7 @@ import datetime as dt
 import os
 import uuid
 
+from core.vault.vault_model import Vault, ConfigMap
 from psycopg2 import pool
 from typing import List, Any, Dict, Optional, Callable
 import logging as log
@@ -40,8 +41,9 @@ from core.processor_state_storage import (
     WorkflowStorage,
     UserProjectStorage,
     UserProfileStorage, MonitorLogEventStorage, StateMachineStorage, UsageStorage, RedisSessionStorage, FieldConfig,
-    SessionStorage, StateActionStorage
+    SessionStorage, StateActionStorage, VaultStorage, ConfigMapStorage
 )
+from psycopg2._json import Json
 
 from .misc_utils import create_state_id_by_state, map_row_to_dict, map_rows_to_dicts
 
@@ -106,6 +108,31 @@ class BaseDatabaseAccess:
                 return affected_rows
         except Exception as e:
             logging.error(f"Database delete query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
+    def execute_insert_query(self, table: str, insert_values: Dict[str, Any]) -> int:
+        conn = self.create_connection()
+        columns = []
+        placeholders = []
+        params = []
+
+        for field, value in insert_values.items():
+            if value is not None:
+                columns.append(field)
+                placeholders.append("%s")
+                params.append(value)
+
+        sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                conn.commit()
+                return cursor.rowcount  # Number of rows inserted
+        except Exception as e:
+            logging.error(f"Database insert query failed: {e}")
             raise
         finally:
             self.release_connection(conn)
@@ -985,6 +1012,100 @@ class SessionDatabaseStorage(SessionStorage, BaseDatabaseAccessSinglePool):
         raise NotImplementedError()
 
 
+class VaultDatabaseStorage(VaultStorage, BaseDatabaseAccessSinglePool):
+    def fetch_vault(self, vault_id: str) -> Optional[Vault]:
+        return self.execute_query_one(
+            sql="SELECT * FROM vault",
+            conditions={'id': vault_id},
+            mapper=lambda row: Vault(**row)
+        )
+
+    def fetch_vaults_by_owner(self, owner_id: str) -> Optional[List[Vault]]:
+        return self.execute_query_many(
+            sql="SELECT * FROM vault",
+            conditions={'owner_id': owner_id},
+            mapper=lambda row: Vault(**row)
+        )
+
+    def insert_vault(self, vault: Vault) -> int:
+        return self.execute_upsert(
+            table="vault",
+            insert_values=vault.dict(),
+            update_values=vault.dict(),
+            key_fields=['id']
+        )
+
+    def delete_vault(self, vault_id: str) -> int:
+        return self.execute_delete(
+            table="vault",
+            conditions={'id': vault_id}
+        )
+
+
+class ConfigMapDatabaseStorage(ConfigMapStorage, BaseDatabaseAccessSinglePool):
+    def fetch_config_map(self, config_id: str) -> Optional[ConfigMap]:
+        return self.execute_query_one(
+            sql="SELECT * FROM config_map",
+            conditions={'id': config_id},
+            mapper=lambda row: ConfigMap(**row)
+        )
+
+    def insert_config_map(self, config: ConfigMap) -> Optional[ConfigMap]:
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = f"""
+                    INSERT INTO config_map (
+                        id,
+                        name,
+                        type,
+                        data,
+                        vault_key_id,
+                        vault_id,
+                        owner_id,
+                        created_at)
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, current_timestamp)
+                             ON CONFLICT (id)
+                      DO UPDATE SET
+                           updated_at = current_timestamp,
+                           name = EXCLUDED.name,
+                           data = EXCLUDED.data,
+                           type = EXCLUDED.type,
+                           vault_id = EXCLUDED.vault_id,
+                           owner_id = EXCLUDED.owner_id
+                """
+
+                if not config.id:
+                    config.id = str(uuid.uuid4())
+
+                cursor.execute(sql, [
+                    config.id,
+                    config.name,
+                    config.type.value,
+                    Json(config.data),
+                    config.vault_key_id,
+                    config.vault_id,
+                    config.owner_id
+                ])
+
+                conn.commit()
+            return config
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+        #
+        # return self.execute_upsert(
+        #     table="config_map",
+        #     insert_values=config.dict(),
+        #     update_values=config.dict(),
+        #     key_fields=['id']
+        # )
+
+    def delete_config_map(self, config_id: str) -> int:
+        return self.execute_delete_query("DELETE FROM config_map", conditions={'id': config_id})
+
 
 class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
     def fetch_processors(self, provider_id: str = None, project_id: str = None) -> List[Processor]:
@@ -1069,64 +1190,64 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
                 'name': name
             },
             mapper=lambda row: ProcessorProperty(**row))
-
-    def fetch_processor_property_by_name(self, processor_id: str, property_name: str):
-        return self.execute_query_one(
-            sql="SELECT * FROM processor_property",
-            conditions={
-                'processor_id': processor_id,
-                'name': property_name
-            },
-            mapper=lambda row: ProcessorProperty(**row)
-        )
-
-    def update_processor_property(self, processor_id: str, property_name: str, property_value: str) -> int:
-        return self.execute_update(
-            table="processor_property",
-            update_values={
-                "value": property_value
-            },
-            conditions={
-                'processor_id': processor_id,
-                'name': property_name
-            },
-        )
-
-    def insert_processor_properties(self, properties: List[ProcessorProperty]) -> List[ProcessorProperty]:
-        try:
-            conn = self.create_connection()
-            with conn.cursor() as cursor:
-                sql = f"""
-                    INSERT INTO processor_property (processor_id, name, value)
-                         VALUES (%s, %s, %s)
-                             ON CONFLICT (processor_id, name) 
-                      DO UPDATE SET 
-                           value = EXCLUDED.value
-                """
-
-                for property in properties:
-                    cursor.execute(sql, [
-                        property.processor_id,
-                        property.name,
-                        property.value
-                    ])
-
-                conn.commit()
-            return properties
-        except Exception as e:
-            logging.error(e)
-            raise e
-        finally:
-            self.release_connection(conn)
-
-    def delete_processor_property(self, processor_id: str, name: str) -> int:
-        return self.execute_delete_query(
-            sql="DELETE FROM processor_property",
-            conditions={
-                'processor_id': processor_id,
-                'name': name
-            }
-        )
+    #
+    # def fetch_processor_property_by_name(self, processor_id: str, property_name: str):
+    #     return self.execute_query_one(
+    #         sql="SELECT * FROM processor_property",
+    #         conditions={
+    #             'processor_id': processor_id,
+    #             'name': property_name
+    #         },
+    #         mapper=lambda row: ProcessorProperty(**row)
+    #     )
+    #
+    # def update_processor_property(self, processor_id: str, property_name: str, property_value: str) -> int:
+    #     return self.execute_update(
+    #         table="processor_property",
+    #         update_values={
+    #             "value": property_value
+    #         },
+    #         conditions={
+    #             'processor_id': processor_id,
+    #             'name': property_name
+    #         },
+    #     )
+    #
+    # def insert_processor_properties(self, properties: List[ProcessorProperty]) -> List[ProcessorProperty]:
+    #     try:
+    #         conn = self.create_connection()
+    #         with conn.cursor() as cursor:
+    #             sql = f"""
+    #                 INSERT INTO processor_property (processor_id, name, value)
+    #                      VALUES (%s, %s, %s)
+    #                          ON CONFLICT (processor_id, name)
+    #                   DO UPDATE SET
+    #                        value = EXCLUDED.value
+    #             """
+    #
+    #             for property in properties:
+    #                 cursor.execute(sql, [
+    #                     property.processor_id,
+    #                     property.name,
+    #                     property.value
+    #                 ])
+    #
+    #             conn.commit()
+    #         return properties
+    #     except Exception as e:
+    #         logging.error(e)
+    #         raise e
+    #     finally:
+    #         self.release_connection(conn)
+    #
+    # def delete_processor_property(self, processor_id: str, name: str) -> int:
+    #     return self.execute_delete_query(
+    #         sql="DELETE FROM processor_property",
+    #         conditions={
+    #             'processor_id': processor_id,
+    #             'name': name
+    #         }
+    #     )
 
 
 class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
@@ -2333,6 +2454,7 @@ class StateActionDatabaseStorage(BaseDatabaseAccessSinglePool, StateActionStorag
             }
         )
 
+
 class PostgresDatabaseStorage(StateMachineStorage):
 
     def __init__(self, database_url: str, incremental: bool = True, *args, **kwargs):
@@ -2348,7 +2470,9 @@ class PostgresDatabaseStorage(StateMachineStorage):
             monitor_log_event_storage=MonitorLogEventDatabaseStorage(database_url=database_url, incremental=incremental),
             usage_storage=UsageDatabaseStorage(database_url=database_url, incremental=incremental),
             session_storage=SessionDatabaseStorage(database_url=database_url, incremental=incremental),
-            state_action_storage=StateActionDatabaseStorage(database_url=database_url, incremental=incremental)
+            state_action_storage=StateActionDatabaseStorage(database_url=database_url, incremental=incremental),
+            vault_storage=VaultDatabaseStorage(database_url=database_url, incremental=incremental),
+            config_map_storage=ConfigMapDatabaseStorage(database_url=database_url, incremental=incremental),
         )
 
 

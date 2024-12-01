@@ -1,15 +1,8 @@
-import json
-
-from core.base_model import UnitType, UserProfile, StateActionDefinition
-from core.processor_state_storage import FieldConfig
-
+from core.base_model import StateActionDefinition
 from tests import mock_data
 from tests.mock_data import (
     db_storage,
 )
-
-import datetime as dt
-
 
 def test_create_state_action():
     user_profile = mock_data.create_user_profile(user_id="aaaaaaaa-aaaa-aaaa-aaaa-test-profile")

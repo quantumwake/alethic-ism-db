@@ -377,6 +377,42 @@ create table user_session_access (
 );
 
 
+-- Define ENUM for configuration types
+CREATE TYPE config_type AS ENUM ('secret', 'config_map');
+
+-- Table to manage encryption key providers
+DROP TABLE IF EXISTS vault;
+CREATE TABLE vault (
+    id VARCHAR(36) PRIMARY KEY, -- Unique identifier for the provider
+    name VARCHAR(255) NOT NULL UNIQUE, -- Provider name (e.g., AWS KMS, HashiCorp Vault)
+    type VARCHAR(50) NOT NULL, -- Provider type (e.g., 'kms', 'vault', 'local')
+    metadata JSONB, -- Additional metadata for the provider (e.g., region, endpoint)
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+DROP TABLE IF EXISTS config_map;
+CREATE TABLE config_map (
+    id UUID PRIMARY KEY, -- Use UUID for unique identifiers
+    name VARCHAR(255) NOT NULL, -- Descriptive name for the configuration
+    type config_type NOT NULL, -- Enum for 'secret' or 'config_map'
+    data JSONB NOT NULL, -- Configuration data (encrypted or plaintext)
+    vault_key_id VARCHAR(255), -- ID of the encryption key (nullable)
+    vault_id VARCHAR(36) REFERENCES vault (id), -- Reference to encryption key provider
+    owner_id VARCHAR(36), -- Optional: ownership for multi-tenancy
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP -- Optional: soft delete support
+);
+
+-- Index for JSONB data to optimize queries
+CREATE INDEX idx_configuration_data ON config_map USING gin(data jsonb_path_ops);
+
+-- Index for filtering by type (optional optimization)
+CREATE INDEX idx_configuration_type ON config_map(type);
+
+
+
 alter table user_profile add column email varchar(255) null;
 alter table user_profile add column name varchar(255) null;
 alter table user_profile add column created_date timestamp not null default current_timestamp;
