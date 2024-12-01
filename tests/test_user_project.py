@@ -1,3 +1,5 @@
+import uuid
+
 from tests.mock_data import (
     db_storage,
     create_user_profile,
@@ -7,9 +9,12 @@ from tests.mock_data import (
 
 
 def test_user_projects():
-    user = create_user_profile(user_id="278eea0a-3035-45cf-83c6-5b36b35bc469")
-    project1 = create_user_project1(user_id=user.user_id)
-    project2 = create_user_project2(user_id=user.user_id)
+    user = create_user_profile(user_id=str(uuid.uuid4()))
+    project1 = create_user_project1(user_id=user.user_id, project_id=str(uuid.uuid4()))
+    project2 = create_user_project2(user_id=user.user_id, project_id=str(uuid.uuid4()))
+
+    project1 = db_storage.fetch_user_project(project_id=project1.project_id)
+    project2 = db_storage.fetch_user_project(project_id=project2.project_id)
 
     assert project1.project_name == "Project Test 1"
     assert project2.project_name == "Project Test 2"

@@ -9,8 +9,7 @@ from core.processor_state import (
 from core.utils.state_utils import validate_processor_status_change
 from sympy.testing import pytest
 
-from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
-
+from alethic_ism_db.db.postgres_storage_class import PostgresDatabaseStorage
 from tests.mock_data import (
     DATABASE_URL,
     db_storage,
@@ -594,7 +593,7 @@ def test_processor_state_transition():
 
     try:
         validate_processor_status_change(
-            current_status=ProcessorStatusCode.TERMINATED,
+            current_status=ProcessorStatusCode.TERMINATE,
             new_status=ProcessorStatusCode.FAILED
         )
 

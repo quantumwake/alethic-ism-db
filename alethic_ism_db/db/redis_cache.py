@@ -1,8 +1,8 @@
-from typing import Optional, List
+import json
 
 import redis
+from typing import Optional, List
 from core.base_model import SessionMessage
-
 from .processor_state_db_storage import SessionDatabaseStorage
 
 

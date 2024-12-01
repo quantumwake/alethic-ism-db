@@ -445,7 +445,7 @@ create index monitor_log_event_user_and_project_id on monitor_log_event (user_id
 CREATE TYPE action_type_enum AS ENUM ('slider', 'text', 'yes/no', 'dropdown');
 
 -- Create the main table
-CREATE TABLE state_action_definitions (
+CREATE TABLE state_action_definition (
     id varchar(36) PRIMARY KEY, -- Automatically generate a UUID if not provided
     state_id varchar(36) NOT NULL,                       -- Foreign key, if needed, can be defined here
     action_type action_type_enum NOT NULL,       -- ENUM type for action type
@@ -454,4 +454,4 @@ CREATE TABLE state_action_definitions (
     field_options JSON NOT NULL,                -- Field options as raw JSON
     created_date TIMESTAMPTZ DEFAULT NOW()        -- Automatically set to current timestamp
 );
-create index state_action_definitions_state_idx on state_action_definitions (state_id);
+create index state_action_definition_state_idx on state_action_definition (state_id);

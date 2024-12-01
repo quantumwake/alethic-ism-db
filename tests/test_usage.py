@@ -1,9 +1,5 @@
-from core.base_model import UnitType
 from core.processor_state_storage import FieldConfig
-
-from tests.mock_data import (
-    db_storage,
-)
+from tests.mock_data import db_storage
 
 
 def test_fetch_usage_report():

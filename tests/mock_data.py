@@ -11,7 +11,7 @@ from core.processor_state import State, StateConfig, StateDataKeyDefinition, Sta
 from core.processor_state_storage import Processor, ProcessorState, ProcessorProvider
 
 from alethic_ism_db.db.misc_utils import create_state_id_by_state
-from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
+from alethic_ism_db.db.postgres_storage_class import PostgresDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 
@@ -298,8 +298,8 @@ def create_user_project0(user_id: str, project_id: str = None) -> UserProject:
     return db_storage.insert_user_project(user_project=user_project)
 
 
-def create_user_project1(user_id: str) -> UserProject:
-    uuid_str = "63c8c2ac-a021-44db-b8cd-8619a8e1c8fa"
+def create_user_project1(user_id: str, project_id: str = None) -> UserProject:
+    uuid_str = "63c8c2ac-a021-44db-b8cd-8619a8e1c8fa" if not project_id else project_id
     user_project = UserProject(
         project_id=uuid_str,
         project_name="Project Test 1",
@@ -308,8 +308,8 @@ def create_user_project1(user_id: str) -> UserProject:
     return db_storage.insert_user_project(user_project=user_project)
 
 
-def create_user_project2(user_id: str) -> UserProject:
-    uuid_str = "61ee1bbe-6e1a-4f18-b516-e06bb4e11cfb"
+def create_user_project2(user_id: str, project_id: str = None) -> UserProject:
+    uuid_str = "61ee1bbe-6e1a-4f18-b516-e06bb4e11cfb" if not project_id else project_id
     user_project = UserProject(
         project_id=uuid_str,
         project_name="Project Test 2",
