@@ -1,7 +1,7 @@
 import os
 import logging as log
 from psycopg2 import pool
-from typing import List, Any, Dict, Optional, Callable
+from typing import List, Any, Dict, Optional, Callable, Union, Tuple
 from core.processor_state_storage import (FieldConfig)
 from .misc_utils import map_row_to_dict
 
@@ -14,6 +14,12 @@ MAX_DB_CONNECTIONS = int(os.environ.get("MAX_DB_CONNECTIONS", 5))
 class SQLNull:
     """Marker class for explicit SQL NULL checks."""
     pass
+
+
+class Condition:
+    def __init__(self, operator: str, value: Any):
+        self.operator = operator
+        self.value = value
 
 
 class BaseDatabaseAccess:
@@ -214,6 +220,69 @@ class BaseDatabaseAccess:
                 rows = cursor.fetchall()
                 results = [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
                 return results if results else None
+        except Exception as e:
+            logging.error(f"Database query failed: {e}")
+            raise
+        finally:
+            self.release_connection(conn)
+
+    def execute_query_many2(self,
+                            sql: str,
+                            conditions: Dict[str, Union[Any, Condition, Tuple[Any, Any]]],
+                            mapper: Callable) \
+            -> Optional[List[Any]]:
+        """
+        Execute a query with various comparison operators.
+
+        Args:
+            sql: Base SQL query
+            conditions: Dictionary where:
+                - key: field name
+                - value can be:
+                    - direct value (uses =)
+                    - Condition object (for >, <, >=, <=)
+                    - tuple of (min, max) for BETWEEN
+                    - SQLNull for IS NULL
+            mapper: Function to map results
+
+        Example:
+            conditions = {
+                'age': Condition('>=', 18),
+                'price': (100, 200),  # BETWEEN
+                'status': 'active',   # equals
+                'deleted_at': SQLNull # IS NULL
+            }
+        """
+        conn = self.create_connection()
+        params = []
+        where_clauses = []
+
+        for field, value in conditions.items():
+            if value is not None:
+                if value is SQLNull:
+                    where_clauses.append(f"{field} IS NULL")
+                elif isinstance(value, Condition):
+                    where_clauses.append(f"{field} {value.operator} %s")
+                    params.append(value.value)
+                elif isinstance(value, tuple) and len(value) == 2:
+                    where_clauses.append(f"{field} BETWEEN %s AND %s")
+                    params.extend(value)
+                else:
+                    where_clauses.append(f"{field} = %s")
+                    params.append(value)
+
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                results = [mapper(map_row_to_dict(cursor=cursor, row=row)) for row in rows]
+                if results:
+                    return results
+                else:
+                    return None
         except Exception as e:
             logging.error(f"Database query failed: {e}")
             raise

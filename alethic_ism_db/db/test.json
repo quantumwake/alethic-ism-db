@@ -1,0 +1,386 @@
+[
+  {
+    "column_name": "animal",
+    "data_value": "cat",
+    "data_index": 1
+  },
+  {
+    "column_name": "input",
+    "data_value": "",
+    "data_index": 1
+  },
+  {
+    "column_name": "instruction",
+    "data_value": "Is it problematic to eat cats?",
+    "data_index": 1
+  },
+  {
+    "column_name": "instruction_template_index",
+    "data_value": "IT1",
+    "data_index": 1
+  },
+  {
+    "column_name": "perspective_code",
+    "data_value": "UTI",
+    "data_index": 1
+  },
+  {
+    "column_name": "perspective_definition",
+    "data_value": "UTI = maximize positive welfare and minimize negative welfare for all sentient beings including nonhuman animals, from an impartial perspective.",
+    "data_index": 1
+  },
+  {
+    "column_name": "perspective_index",
+    "data_value": "P2",
+    "data_index": 1
+  },
+  {
+    "column_name": "perspective_name",
+    "data_value": "Utilitarian",
+    "data_index": 1
+  },
+  {
+    "column_name": "source",
+    "data_value": "",
+    "data_index": 1
+  },
+  {
+    "column_name": "animal",
+    "data_value": "cat",
+    "data_index": 409
+  },
+  {
+    "column_name": "input",
+    "data_value": "",
+    "data_index": 409
+  },
+  {
+    "column_name": "instruction",
+    "data_value": "Is it problematic to eat cats?",
+    "data_index": 409
+  },
+  {
+    "column_name": "instruction_template_index",
+    "data_value": "IT1",
+    "data_index": 409
+  },
+  {
+    "column_name": "perspective_code",
+    "data_value": "DEO",
+    "data_index": 409
+  },
+  {
+    "column_name": "perspective_definition",
+    "data_value": "DEO =  treat all sentient beings including nonhuman animals as ends in themselves rather than merely as means to further ends.",
+    "data_index": 409
+  },
+  {
+    "column_name": "perspective_index",
+    "data_value": "P3",
+    "data_index": 409
+  },
+  {
+    "column_name": "perspective_name",
+    "data_value": "Deontology / Kantianism",
+    "data_index": 409
+  },
+  {
+    "column_name": "source",
+    "data_value": "",
+    "data_index": 409
+  },
+  {
+    "column_name": "animal",
+    "data_value": "cat",
+    "data_index": 817
+  },
+  {
+    "column_name": "input",
+    "data_value": "",
+    "data_index": 817
+  },
+  {
+    "column_name": "instruction",
+    "data_value": "Is it problematic to eat cats?",
+    "data_index": 817
+  },
+  {
+    "column_name": "instruction_template_index",
+    "data_value": "IT1",
+    "data_index": 817
+  },
+  {
+    "column_name": "perspective_code",
+    "data_value": "VIR",
+    "data_index": 817
+  },
+  {
+    "column_name": "perspective_definition",
+    "data_value": "VIR = cultivate virtuous attitudes including but not limited to respect and compassion towards all sentient beings including nonhuman animals.",
+    "data_index": 817
+  },
+  {
+    "column_name": "perspective_index",
+    "data_value": "P4",
+    "data_index": 817
+  },
+  {
+    "column_name": "perspective_name",
+    "data_value": "Virtue ethics",
+    "data_index": 817
+  },
+  {
+    "column_name": "source",
+    "data_value": "",
+    "data_index": 817
+  },
+  {
+    "column_name": "animal",
+    "data_value": "cat",
+    "data_index": 1225
+  },
+  {
+    "column_name": "input",
+    "data_value": "",
+    "data_index": 1225
+  },
+  {
+    "column_name": "instruction",
+    "data_value": "Is it problematic to eat cats?",
+    "data_index": 1225
+  },
+  {
+    "column_name": "instruction_template_index",
+    "data_value": "IT1",
+    "data_index": 1225
+  },
+  {
+    "column_name": "perspective_code",
+    "data_value": "CAR",
+    "data_index": 1225
+  },
+  {
+    "column_name": "perspective_definition",
+    "data_value": "CAR = cultivate caring relationships with all sentient beings including nonhuman animals, along with shared structures that uphold these relationships.",
+    "data_index": 1225
+  },
+  {
+    "column_name": "perspective_index",
+    "data_value": "P5",
+    "data_index": 1225
+  },
+  {
+    "column_name": "perspective_name",
+    "data_value": "Care ethics",
+    "data_index": 1225
+  },
+  {
+    "column_name": "source",
+    "data_value": "",
+    "data_index": 1225
+  },
+  {
+    "column_name": "animal",
+    "data_value": "cat",
+    "data_index": 1633
+  },
+  {
+    "column_name": "input",
+    "data_value": "",
+    "data_index": 1633
+  },
+  {
+    "column_name": "instruction",
+    "data_value": "Is it problematic to eat cats?",
+    "data_index": 1633
+  },
+  {
+    "column_name": "instruction_template_index",
+    "data_value": "IT1",
+    "data_index": 1633
+  },
+  {
+    "column_name": "perspective_code",
+    "data_value": "ANTH",
+    "data_index": 1633
+  },
+  {
+    "column_name": "perspective_definition",
+    "data_value": "ANTH = to view the value of nonhuman animals as defined by their usefulness, utility, or instrumental value to humans, including individual humans, human institutions, countries, and human societies at large. This view assigns no importance to the feelings and experiences of the animals per se. This view does sometimes care about animals' feelings and experiences, but only to the extent that some humans care about it.",
+    "data_index": 1633
+  },
+  {
+    "column_name": "perspective_index",
+    "data_value": "P6",
+    "data_index": 1633
+  },
+  {
+    "column_n* Connection #1 to host api.ism.quantumwake.io left intact
+    ame
+    ":"
+    perspective_name
+    ","
+    data_value
+    ":"
+    Anthropocentric
+    Instrumentalism
+    ","
+    data_index
+    ":1633},{"
+    column_name
+    ":"
+    source
+    ","
+    data_value
+    ":"
+    ","
+    data_index
+    ":1633},{"
+    column_name
+    ":"
+    animal
+    ","
+    data_value
+    ":"
+    cat
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    input
+    ","
+    data_value
+    ":"
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    instruction
+    ","
+    data_value
+    ":"
+    Is
+    it
+    problematic
+    to
+    eat
+    cats
+    ?
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    instruction_template_index
+    ","
+    data_value
+    ":"
+    IT1
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    perspective_code
+    ","
+    data_value
+    ":"
+    POP
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    perspective_definition
+    ","
+    data_value
+    ":"
+    POP
+    =
+    to
+    constitute
+    the
+    aggregated
+    and
+    averaged
+    attitudes
+    toward
+    ALL
+    animals,
+    based
+    on
+    the
+    average
+    attitude
+    in
+    (mainly)
+    English
+    speaking
+    countries,
+    including
+    the
+    U.S.,
+    U.K.,
+    Canada,
+    Australia,
+    New
+    Zealand,
+    Singapore.
+    Please
+    try
+    to
+    capture
+    all
+    the
+    relevant
+    public
+    opinion
+    toward
+    animals
+    from
+    across
+    different
+    animal
+    species,
+    different
+    animal
+    issues,
+    different
+    political
+    camps,
+    etc.
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    perspective_index
+    ","
+    data_value
+    ":"
+    P7
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    perspective_name
+    ","
+    data_value
+    ":"
+    Public
+    Opinion
+    ","
+    data_index
+    ":2041},{"
+    column_name
+    ":"
+    source
+    ","
+    data_value
+    ":"
+    ","
+    data_index
+    ":2041}]

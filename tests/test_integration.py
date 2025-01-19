@@ -1,3 +1,6 @@
+import os
+import time
+
 from core.base_model import InstructionTemplate, ProcessorStatusCode, ProcessorProperty, MonitorLogEvent
 from core.processor_state import (
     StateConfigLM,
@@ -24,6 +27,11 @@ from tests.mock_data import (
 )
 
 state_id = "fa000000-0000-0000-0000-0000000000fa"
+
+# set the timezone to UTC for test cases
+os.environ['TZ'] = 'UTC'
+time.tzset()  # Note: This works on Unix-like systems
+
 
 def test_state_config_stream():
 
@@ -613,6 +621,8 @@ def test_monitor_log_event_empty_data():
 
 
 def test_monitor_log_event_with_exception_and_data():
+
+
     log2 = MonitorLogEvent(
         log_type='test log type',
         internal_reference_id=-10000,
@@ -624,7 +634,7 @@ def test_monitor_log_event_with_exception_and_data():
     assert saved_log_2.log_id
     assert saved_log_2.log_time
 
-    fetched_logs = db_storage.fetch_monitor_log_events(internal_reference_id=-10000)
+    fetched_logs = db_storage.fetch_monitor_log_events(reference_id=-10000)
     assert len(fetched_logs) > 0     # TODO this is going to keep increasing
 
     for log in fetched_logs:

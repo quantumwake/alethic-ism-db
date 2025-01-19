@@ -83,6 +83,14 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
         finally:
             self.release_connection(conn)
 
+    def delete_processor(self, processor_id: str) -> int:
+        return self.execute_delete_query(
+            sql="DELETE FROM processor",
+            conditions={
+                'id': processor_id
+            }
+        )
+
     def fetch_processor_properties(self, processor_id: str, name: str = None) -> Optional[List[ProcessorProperty]]:
         return self.execute_query_many(
             sql="SELECT * FROM processor_property",
@@ -91,7 +99,7 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
                 'name': name
             },
             mapper=lambda row: ProcessorProperty(**row))
-    #
+    #c
     # def fetch_processor_property_by_name(self, processor_id: str, property_name: str):
     #     return self.execute_query_one(
     #         sql="SELECT * FROM processor_property",

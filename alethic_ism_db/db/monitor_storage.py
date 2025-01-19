@@ -1,6 +1,5 @@
 import logging as log
-
-from typing import Optional, List
+import datetime as dt
 from core.base_model import MonitorLogEvent
 from core.processor_state_storage import MonitorLogEventStorage
 from .base import BaseDatabaseAccessSinglePool
@@ -10,22 +9,39 @@ logging = log.getLogger(__name__)
 
 class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessSinglePool):
 
-    def fetch_monitor_log_events(
-            self,
-            internal_reference_id: int = None,
-            user_id: str = None,
-            project_id: str = None) -> Optional[List[MonitorLogEvent]]:
+    # def fetch_monitor_log_events(
+    #         self,
+    #         internal_reference_id: int = None,
+    #         user_id: str = None,
+    #         project_id: str = None) -> Optional[List[MonitorLogEvent]]:
 
-        if not internal_reference_id and not user_id and not project_id:
+    def fetch_monitor_log_events(self,
+                                 user_id: str = None,
+                                 project_id: str = None,
+                                 reference_id: str = None,
+                                 start_date: dt.datetime = None,
+                                 end_date: dt.datetime = None):
+
+        if not user_id and not project_id and not reference_id:
             raise ValueError(f'at least one search criteria must be defined, '
                              f'internal_reference_id, user_id or project_id')
 
-        return self.execute_query_many(
+        if not start_date:
+            start_date = dt.datetime.now() - dt.timedelta(days=7)
+
+        if dt.datetime.now() - start_date > dt.timedelta(days=14):
+            raise ValueError(f'start date must be within 14 days of the current date')
+
+        if not end_date:
+            end_date = dt.datetime.now()
+
+        return self.execute_query_many2(
             sql="select * from monitor_log_event",
             conditions={
-                'internal_reference_id': internal_reference_id,
+                'internal_reference_id': reference_id,
                 'user_id': user_id,
-                'project_id': project_id
+                'project_id': project_id,
+                'log_time': (start_date, end_date)
             },
             mapper=lambda row: MonitorLogEvent(**row)
         )
