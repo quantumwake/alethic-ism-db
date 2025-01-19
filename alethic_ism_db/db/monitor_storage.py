@@ -1,5 +1,7 @@
 import logging as log
 import datetime as dt
+from typing import Optional, List
+
 from core.base_model import MonitorLogEvent
 from core.processor_state_storage import MonitorLogEventStorage
 from .base import BaseDatabaseAccessSinglePool
@@ -20,7 +22,8 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessS
                                  project_id: str = None,
                                  reference_id: str = None,
                                  start_date: dt.datetime = None,
-                                 end_date: dt.datetime = None):
+                                 end_date: dt.datetime = None,
+                                 order_by: [str] = None) -> Optional[List[MonitorLogEvent]]:
 
         if not user_id and not project_id and not reference_id:
             raise ValueError(f'at least one search criteria must be defined, '
@@ -35,6 +38,9 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessS
         if not end_date:
             end_date = dt.datetime.now()
 
+        if not order_by:
+            order_by = ["log_id desc"]
+
         return self.execute_query_many2(
             sql="select * from monitor_log_event",
             conditions={
@@ -43,7 +49,8 @@ class MonitorLogEventDatabaseStorage(MonitorLogEventStorage, BaseDatabaseAccessS
                 'project_id': project_id,
                 'log_time': (start_date, end_date)
             },
-            mapper=lambda row: MonitorLogEvent(**row)
+            mapper=lambda row: MonitorLogEvent(**row),
+            order_by=order_by
         )
 
     def delete_monitor_log_event(

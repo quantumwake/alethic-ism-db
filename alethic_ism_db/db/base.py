@@ -229,7 +229,7 @@ class BaseDatabaseAccess:
     def execute_query_many2(self,
                             sql: str,
                             conditions: Dict[str, Union[Any, Condition, Tuple[Any, Any]]],
-                            mapper: Callable) \
+                            mapper: Callable, order_by: [str] = None) \
             -> Optional[List[Any]]:
         """
         Execute a query with various comparison operators.
@@ -252,6 +252,11 @@ class BaseDatabaseAccess:
                 'status': 'active',   # equals
                 'deleted_at': SQLNull # IS NULL
             }
+            :param sql:
+            :param sql:
+            :param mapper:
+            :param conditions:
+            :param order_by:
         """
         conn = self.create_connection()
         params = []
@@ -273,6 +278,9 @@ class BaseDatabaseAccess:
 
         if where_clauses:
             sql += " WHERE " + " AND ".join(where_clauses)
+
+        if order_by:
+            sql += f" ORDER BY " + ",".join(order_by)
 
         try:
             with conn.cursor() as cursor:

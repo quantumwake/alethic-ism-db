@@ -34,7 +34,6 @@ time.tzset()  # Note: This works on Unix-like systems
 
 
 def test_state_config_stream():
-
     state_config_stream = StateConfigStream(
         name="test stream state",
         storage_class="stream",
@@ -47,6 +46,7 @@ def test_state_config_stream():
         state_type="StateConfigStream"
     )
     state.state_type = "StateConfigStream"
+
 
 def test_state_key_definition_delete():
     state_id = "fa000000-0000-0000-0000-0000000000fa"
@@ -309,7 +309,8 @@ def test_create_processor_properties():
 
     assert processor.id is not None
 
-    properties = [ProcessorProperty(processor_id=processor.id, name=f'name {index}', value=f'value {index}') for index in range(10)]
+    properties = [ProcessorProperty(processor_id=processor.id, name=f'name {index}', value=f'value {index}') for index
+                  in range(10)]
     saved_properties = db_storage.insert_processor_properties(properties=properties)
 
     assert len(saved_properties) == len(properties)
@@ -331,9 +332,9 @@ def test_create_processor_properties():
 
     loaded_properties = db_storage.fetch_processor_properties(processor_id=processor.id)
     assert len(loaded_properties) == 5
-    for index in range (5, 10):
-        assert f'name {index}' == loaded_properties[index-5].name
-        assert f'value {index}' == loaded_properties[index-5].value
+    for index in range(5, 10):
+        assert f'name {index}' == loaded_properties[index - 5].name
+        assert f'value {index}' == loaded_properties[index - 5].value
 
     assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 5')
     assert 1 == db_storage.delete_processor_property(processor_id=processor.id, name='name 6')
@@ -343,6 +344,7 @@ def test_create_processor_properties():
 
     loaded_properties = db_storage.fetch_processor_properties(processor_id=processor.id)
     assert not loaded_properties
+
 
 def test_fetch_processor_provider():
     provider = create_mock_processor_provider(
@@ -384,7 +386,8 @@ def test_create_processor_status_change_status():
     assert processor_state.status == saved_processor_state.status
     assert saved_processor_state.status == ProcessorStatusCode.CREATED
 
-    fetched_processor_state_list = db_storage.fetch_processor_state_route(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    fetched_processor_state_list = db_storage.fetch_processor_state_route(processor_id=processor_state.processor_id,
+                                                                          state_id=processor_state.state_id)
     assert len(fetched_processor_state_list) == 1
 
     fetched_processor_state = fetched_processor_state_list[0]
@@ -394,7 +397,8 @@ def test_create_processor_status_change_status():
     saved_processor_state = db_storage.insert_processor_state_route(processor_state=fetched_processor_state)
 
     # check the status update
-    fetched_processor_state_again_list = db_storage.fetch_processor_state_route(processor_id=processor_state.processor_id, state_id=processor_state.state_id)
+    fetched_processor_state_again_list = db_storage.fetch_processor_state_route(
+        processor_id=processor_state.processor_id, state_id=processor_state.state_id)
     fetched_processor_state_again = fetched_processor_state_again_list[0]
     assert fetched_processor_state_again.status == ProcessorStatusCode.QUEUED
 
@@ -466,6 +470,7 @@ def test_static_columns_with_updated_columns_using_new_query_state():
             "force_update_column": True
         })
 
+
 def test_create_processor_state():
     # persist some processing input states
     processor_state_1 = create_mock_processor_state_1()
@@ -497,15 +502,15 @@ def test_create_processor_state():
 
     saved_processor_state = db_storage.insert_processor_state_route(processor_state=processor_states_list_1[0])
     fetched_processed_state = db_storage.fetch_processor_state_route(processor_id=saved_processor_state.processor_id,
-                                                               state_id=saved_processor_state.state_id,
-                                                               direction=saved_processor_state.direction)
+                                                                     state_id=saved_processor_state.state_id,
+                                                                     direction=saved_processor_state.direction)
 
     assert fetched_processed_state[0].count == saved_processor_state.count
     assert fetched_processed_state[0].current_index == saved_processor_state.current_index
     assert fetched_processed_state[0].maximum_index == saved_processor_state.maximum_index
 
-def test_processor_state_fetch_by_project_id():
 
+def test_processor_state_fetch_by_project_id():
     user = create_user_profile(user_id="processor_state_project_id")
     project = create_user_project0(user.user_id, "processor_state_project_id")
     state = create_mock_random_state(
@@ -553,7 +558,7 @@ def test_create_state__data_and_delete_state_data():
         {"question": "can dogs sing?"}
     ]
 
-    [fetch_state.apply_query_state(query_state=qs) for qs in data]      # apply the query states consecutively.
+    [fetch_state.apply_query_state(query_state=qs) for qs in data]  # apply the query states consecutively.
     db_storage.save_state(state=fetch_state)
     db_storage.update_state_count(state=fetch_state)
 
@@ -567,8 +572,8 @@ def test_create_state__data_and_delete_state_data():
     fetch_state = db_storage.load_state(state_id=fetch_state.id)
     assert fetch_state.count == 0
 
-def test_processor_state_transition():
 
+def test_processor_state_transition():
     validate_processor_status_change(
         current_status=ProcessorStatusCode.CREATED,
         new_status=ProcessorStatusCode.QUEUED
@@ -621,8 +626,6 @@ def test_monitor_log_event_empty_data():
 
 
 def test_monitor_log_event_with_exception_and_data():
-
-
     log2 = MonitorLogEvent(
         log_type='test log type',
         internal_reference_id=-10000,
@@ -635,7 +638,7 @@ def test_monitor_log_event_with_exception_and_data():
     assert saved_log_2.log_time
 
     fetched_logs = db_storage.fetch_monitor_log_events(reference_id=-10000)
-    assert len(fetched_logs) > 0     # TODO this is going to keep increasing
+    assert len(fetched_logs) > 0  # TODO this is going to keep increasing
 
     for log in fetched_logs:
         assert log.log_time
@@ -650,7 +653,6 @@ def test_state_persistence():
 
     assert state != None
     db_storage.save_state(state=state)
-
 
 
 def test_state_config_lm():
