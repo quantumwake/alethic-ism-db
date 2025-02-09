@@ -127,19 +127,21 @@ create table processor_class (
     class_name varchar(32) not null primary key
 );
 
-INSERT INTO processor_class VALUES ('CodeProcessing');
-INSERT INTO processor_class VALUES ('NaturalLanguageProcessing');
-INSERT INTO processor_class VALUES ('ImageProcessing');
-INSERT INTO processor_class VALUES ('DataTransformation');
-INSERT INTO processor_class VALUES ('TextProcessing');
-INSERT INTO processor_class VALUES ('VideoProcessing');
-INSERT INTO processor_class VALUES ('AudioProcessing');
-INSERT INTO processor_class VALUES ('DataAnalysis');
-INSERT INTO processor_class VALUES ('SignalProcessing');
-INSERT INTO processor_class VALUES ('MachineLearning');
-INSERT INTO processor_class VALUES ('Interaction')
-INSERT INTO processor_class values ('DatabaseProcessing');
 
+INSERT INTO processor_class VALUES
+    ('CodeProcessing'),
+    ('NaturalLanguageProcessing'),
+    ('ImageProcessing'),
+    ('DataTransformation'),
+    ('TextProcessing'),
+    ('VideoProcessing'),
+    ('AudioProcessing'),
+    ('DataAnalysis'),
+    ('SignalProcessing'),
+    ('MachineLearning'),
+    ('DatabaseProcessing'),
+    ('Interaction')
+    ON CONFLICT DO NOTHING;
 
 DROP TABLE IF EXISTS processor_provider cascade;
 CREATE TABLE processor_provider (
@@ -152,6 +154,7 @@ CREATE TABLE processor_provider (
 );
 
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
+('language/models/openai/gpt-4o-latest', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
 ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
 ('language/models/openai/o1-preview', 'OpenAI', 'o1-preview', 'NaturalLanguageProcessing'),
 ('image/models/openai/dall-e-2', 'OpenAI', 'dall-e-2', 'ImageProcessing'),

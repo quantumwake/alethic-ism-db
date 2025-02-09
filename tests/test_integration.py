@@ -276,7 +276,8 @@ def test_create_template():
         )
 
     templates = db_storage.fetch_templates()
-    assert templates is None
+    templates = [x for x in templates if x.template_path.startswith('test/template/')]
+    assert not templates
 
 
 def test_create_processor():
@@ -650,8 +651,7 @@ def test_monitor_log_event_with_exception_and_data():
 
 def test_state_persistence():
     state = create_mock_random_state()
-
-    assert state != None
+    assert state is not None
     db_storage.save_state(state=state)
 
 

@@ -1,27 +1,26 @@
 package:
   name: alethic-ism-db
-  version: "0.3.0"
-
+  version: 0.0.1
 source:
   path: ../
-  #url: https://github.com/quantumwake/alethic-processor/v0.1.0.tar.gz
-  # or use git_rev for a specific branch or commit
-#  git_url: https://github.com/quantumwake/alethic-processor.git
-#  git_rev: main
-
 build:
-  number: 400
-  script: "{{ PYTHON }} -m pip install . -vv"
-
+  # Uncomment the following line if your package is pure Python.
+  noarch: python
+  number: 1040
+  # If you need MAKEFLAGS for building native code, you can leave it:
+  # script_env:
+  #   - MAKEFLAGS=-j$(nproc)
+  # The pip flags below ensure dependencies are managed by conda:
+  script: "{{ PYTHON }} -m pip install . --no-deps --ignore-installed -vv"
 requirements:
   host:
-    - python
+    - python >=3.7 # Adjust the Python version as needed
     - pip
+    - setuptools
   run:
-    - python
-
+    - python >=3.7
 about:
   home: https://github.com/quantumwake/alethic-ism-db
   license: GPL-3.0-or-later
   license_file: LICENSE
-  summary: "Alethic - Instruction-Based State Machine (DB)"  # Brief summary of your package
+  summary: "Alethic - Instruction-Based State Machine (Backend)"

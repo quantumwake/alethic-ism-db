@@ -1,30 +1,31 @@
-APP_NAME="alethic-ism-db"
-DOCKER_NAMESPACE="krasaee"
-CONDA_PACKAGE_PATH_ISM_CORE="../alethic-ism-core"
-GIT_COMMIT_ID=$(git rev-parse HEAD)
-TAG="$DOCKER_NAMESPACE/$APP_NAME:$GIT_COMMIT_ID"
+#!/bin/bash
 
-ARCH=$1
-if [ -z "$ARCH" ];
-then
-  ARCH="linux/amd64"
-  #TODO check operating system ARCH="linux/arm64"
-fi;
+set -euo pipefail  # Enables strict error handling
 
-echo "Using arch: $ARCH for image tag $TAG"
-#conda_ism_core_path=$(find $CONDA_PACKAGE_PATH_ISM_CORE -type f -name "alethic-ism-core*.tar.gz")
-conda_ism_core_path=$(ls -ltr $CONDA_PACKAGE_PATH_ISM_CORE/alethic-ism-core*.tar.gz | awk '{print $9}' | tail -n 1)
-conda_ism_core_path=$(basename $conda_ism_core_path)
+ARTIFACT_DIR="/app"
+CHANNEL_DIR="/app/conda/env/local_channel"
+ARTIFACT_NAME="local_channel.tar.gz"
+ARTIFACT_PATH="$ARTIFACT_DIR/$ARTIFACT_NAME"
 
-echo "Using Conda ISM core: $conda_ism_core_path"
-if [ ! -z "${conda_ism_core_path}" ];
-then
-  echo "Copying $CONDA_PACKAGE_PATH_ISM_CORE/$conda_ism_core_path -> $conda_ism_core_path"
-  cp $CONDA_PACKAGE_PATH_ISM_CORE/$conda_ism_core_path $conda_ism_core_path
+echo "Starting the packaging process for the local conda channel..."
 
-  # TODO hardcoded - this is set to a private repo for now, such that it can be deployed to k8s
-  docker build \
-   --progress=plain --platform $ARCH -t $TAG \
-   --build-arg CONDA_ISM_CORE_PATH=$conda_ism_core_path \
-   --no-cache .
-fi;
+# Ensure the directory exists before proceeding
+if [[ ! -d "$CHANNEL_DIR" ]]; then
+    echo "Error: The directory '$CHANNEL_DIR' does not exist. Exiting."
+    exit 1
+fi
+
+# Remove existing artifact if present
+if [[ -f "$ARTIFACT_PATH" ]]; then
+    echo "Removing existing artifact: $ARTIFACT_PATH"
+    rm -f "$ARTIFACT_PATH"
+fi
+
+# Create the tarball with proper compression and error handling
+echo "Creating tarball: $ARTIFACT_PATH"
+if tar -zcvf "$ARTIFACT_PATH" -C "$CHANNEL_DIR" .; then
+    echo "Packaging completed successfully."
+else
+    echo "Error: Failed to create tarball."
+    exit 1
+fi

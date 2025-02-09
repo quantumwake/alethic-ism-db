@@ -1,8 +1,8 @@
 name: alethic-ism-db
 channels:
-  - file:///app/conda/env/local_channel
-  - pytorch
+#  - pytorch
   - conda-forge
+  - https://conda.anaconda.org/quantumwake
 dependencies:
   - python=3.11
   - python-dotenv
