@@ -1,12 +1,12 @@
 package:
   name: alethic-ism-db
-  version: 0.0.1
+  version: 0.0.2
 source:
   path: ../
 build:
   # Uncomment the following line if your package is pure Python.
   noarch: python
-  number: 1040
+  number: 1041
   # If you need MAKEFLAGS for building native code, you can leave it:
   # script_env:
   #   - MAKEFLAGS=-j$(nproc)
