@@ -1,4 +1,5 @@
-from core.base_model import StateActionDefinition
+from ismcore.model.base_model import StateActionDefinition
+
 from tests import mock_data
 from tests.mock_data import db_storage
 

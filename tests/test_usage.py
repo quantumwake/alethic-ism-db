@@ -1,4 +1,5 @@
-from core.processor_state_storage import FieldConfig
+from ismcore.storage.processor_state_storage import FieldConfig
+
 from tests.mock_data import db_storage
 
 

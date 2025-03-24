@@ -1,0 +1,5 @@
+.env
+_version.py
+dist
+build
+src/alethic_ism_core.egg-info

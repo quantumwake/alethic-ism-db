@@ -1,7 +1,7 @@
-from core.vault.vault_model import ConfigMap, ConfigMapType, Vault, VaultType
+from ismcore.vault.vault_model import Vault, VaultType
 
-from alethic_ism_db.db.configmap_storage import ConfigMapDatabaseStorage
-from alethic_ism_db.db.vault_storage import VaultDatabaseStorage
+from ismdb.configmap_storage import ConfigMapDatabaseStorage
+from ismdb.vault_storage import VaultDatabaseStorage
 from tests.mock_data import DATABASE_URL
 
 config_map_storage = ConfigMapDatabaseStorage(database_url=DATABASE_URL)

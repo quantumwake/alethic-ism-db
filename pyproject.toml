@@ -1,23 +1,12 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["./alethic_ism_db"]  # list of folders that contain the packages (["."] by default)
-#include = ["<package name>"]  # package names should match these glob patterns (["*"] by default)
-#exclude = []  # exclude packages matching these glob patterns (empty by default)
-#namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+#[project]
+#name = "alethic-ism-db"
+#dynamic = ["version"]
+#description = "Alethic - Instruction-Based State Machine (Python DB SDK)"
 
-[project]
-name = "alethic-ism-db"
-version = "0.3.0"
-description = "Alethic - Instruction-Based State Machine (DB)"
-dependencies = [
-    "pydantic",         # this should be a dependency of the ism-core, TODO figure this out
-    "alethic-ism-core",
-    "psycopg2",
-#    "asyncpg",
-    "transformers",
-    "nltk",
-    "pytorch"
-]
+[tool.setuptools_scm]
+version_file = "_version.py"
+local_scheme = "no-local-version"

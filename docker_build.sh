@@ -3,14 +3,14 @@
 print_usage() {
   echo "Usage: $0 [-t tag] [-a architecture]"
   echo "  -t tag             Docker image tag"
-  echo "  -p platform        Target platform architecture (default: linux/amd64)"
+  echo "  -a platform        Target platform architecture (default: linux/amd64)"
 }
 
 # Check for ANACONDA_API_TOKEN
-if [ -z "$ANACONDA_API_TOKEN" ]; then
-    echo "Error: ANACONDA_API_TOKEN environment variable is not set"
-    exit 1
-fi
+#if [ -z "$ANACONDA_API_TOKEN" ]; then
+#    echo "Error: ANACONDA_API_TOKEN environment variable is not set"
+#    exit 1
+#fi
 
 TAG=""
 ARCH="linux/amd64"
@@ -31,7 +31,12 @@ if [ -z "$TAG" ]; then
     exit 1
 fi
 
-docker build --progress=plain \
-  --platform "$ARCH" -t "$TAG" \
-  --build-arg ANACONDA_API_TOKEN=$ANACONDA_API_TOKEN \
-  --no-cache .
+#  --build-arg ANACONDA_API_TOKEN=$ANACONDA_API_TOKEN \
+#
+#docker build \
+#  --platform "$ARCH" -t "$TAG" \
+#  --no-cache .
+
+
+docker build --secret id=pypirc,src=/tmp/secrets/pypirc \
+  --platform "$ARCH" -t "$TAG" .

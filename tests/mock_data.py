@@ -1,17 +1,12 @@
 import os
 import random
 
-from core.base_model import (
-    ProcessorStateDirection,
-    UserProfile, UserProject,
-    WorkflowNode, WorkflowEdge,
-    ProcessorStatusCode
-)
-from core.processor_state import State, StateConfig, StateDataKeyDefinition, StateConfigLM
-from core.processor_state_storage import Processor, ProcessorState, ProcessorProvider
+from ismcore.model.base_model import Processor, ProcessorStatusCode, ProcessorProvider, ProcessorState, \
+    ProcessorStateDirection, UserProfile, UserProject, WorkflowNode, WorkflowEdge
+from ismcore.model.processor_state import State, StateConfig, StateDataKeyDefinition, StateConfigLM
 
-from alethic_ism_db.db.misc_utils import create_state_id_by_state
-from alethic_ism_db.db.postgres_storage_class import PostgresDatabaseStorage
+from ismdb.misc_utils import create_state_id_by_state
+from ismdb.postgres_storage_class import PostgresDatabaseStorage
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
 

@@ -1,18 +1,24 @@
 import os
 import time
+import pytest
 
-from core.base_model import InstructionTemplate, ProcessorStatusCode, ProcessorProperty, MonitorLogEvent
-from core.processor_state import (
-    StateConfigLM,
+from ismcore.utils.state_utils import validate_processor_status_change
+from ismdb.postgres_storage_class import PostgresDatabaseStorage
+from ismcore.model.base_model import (
+    InstructionTemplate,
+    ProcessorStatusCode,
+    ProcessorProperty,
+    MonitorLogEvent)
+
+from ismcore.model.processor_state import (
     State,
     StateConfig,
-    StateDataKeyDefinition, StateDataColumnDefinition, StateConfigStream
-)
+    StateConfigLM,
+    StateConfigStream,
+    StateDataKeyDefinition,
+    StateDataColumnDefinition)
 
-from core.utils.state_utils import validate_processor_status_change
-from sympy.testing import pytest
 
-from alethic_ism_db.db.postgres_storage_class import PostgresDatabaseStorage
 from tests.mock_data import (
     DATABASE_URL,
     db_storage,
@@ -310,7 +316,8 @@ def test_create_processor_properties():
 
     assert processor.id is not None
 
-    properties = [ProcessorProperty(processor_id=processor.id, name=f'name {index}', value=f'value {index}') for index
+    properties = [ProcessorProperty(processor_id=processor.id, name=f'name {index}', value=f'value {index}')
+                  for index
                   in range(10)]
     saved_properties = db_storage.insert_processor_properties(properties=properties)
 

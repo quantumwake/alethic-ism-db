@@ -1,0 +1,8 @@
+alethic-ism-core
+nats-py
+pyyaml
+psycopg2
+python-dotenv
+pydantic
+pytest
+pytest-asyncio

@@ -1,6 +1,6 @@
-import uuid
+import datetime
 
-from core.processor_state_storage import FieldConfig
+from ismcore.model.base_model import SessionMessage
 
 from tests import mock_data
 from tests.mock_data import (
@@ -20,9 +20,9 @@ def test_create_session():
 
     assert session.session_id is not None
     assert session.created_date is not None
-    assert session.created_date.year == dt.datetime.utcnow().year
-    assert session.created_date.month == dt.datetime.utcnow().month
-    assert session.created_date.day == dt.datetime.utcnow().day
+    assert session.created_date.year == dt.datetime.now(datetime.UTC).year
+    assert session.created_date.month == dt.datetime.now(datetime.UTC).month
+    assert session.created_date.day == dt.datetime.now(datetime.UTC).day
 
     loaded_session = db_storage.fetch_session(
         user_id=user_profile.user_id,
@@ -38,11 +38,12 @@ def test_create_session():
     # insert a bunch of random messages
     for i in range(1, 5):
         testJson = str({"role": "user", "content": f"hello world {i}"})
-        session_message = db_storage.insert_session_message(
-            user_id=user_profile.user_id,
+        session_message = db_storage.insert_session_message(message=SessionMessage(
             session_id=session.session_id,
-            content=testJson
-        )
+            message_date=dt.datetime.utcnow(),
+            user_id=user_profile.user_id,
+            original_content=str({"role": "user", "content": f"hello world {i}"}
+        )))
 
         assert session_message.session_id == session.session_id
 

@@ -1,10 +1,12 @@
 import os
 
 import logging
-from core.base_model import InstructionTemplate, UserProject, UserProfile
-from core.base_processor_lm import BaseProcessorLM
-from core.processor_state import State, StateConfigLM, StateDataKeyDefinition
-from alethic_ism_db.db.processor_state_db_storage import PostgresDatabaseStorage
+
+from ismcore.model.base_model import UserProfile, UserProject, InstructionTemplate
+from ismcore.model.processor_state import StateConfigLM, State, StateDataKeyDefinition
+from ismcore.processor.base_processor_lm import BaseProcessorLM
+
+from ismdb.postgres_storage_class import PostgresDatabaseStorage
 
 logging.basicConfig(level=logging.DEBUG)
 logging = logging.getLogger(__name__)

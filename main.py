@@ -25,7 +25,7 @@
 # 
 from core.processor_state import State
 
-from alethic_ism_db.db.processor_state_db_storage import ProcessorStateDatabaseStorage
+from src.ismdb.processor_state_db_storage import ProcessorStateDatabaseStorage
 
 if __name__ == '__main__':
     url = 'postgresql://postgres:postgres1@localhost:5432/postgres'
