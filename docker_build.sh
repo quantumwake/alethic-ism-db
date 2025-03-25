@@ -6,12 +6,6 @@ print_usage() {
   echo "  -a platform        Target platform architecture (default: linux/amd64)"
 }
 
-# Check for ANACONDA_API_TOKEN
-#if [ -z "$ANACONDA_API_TOKEN" ]; then
-#    echo "Error: ANACONDA_API_TOKEN environment variable is not set"
-#    exit 1
-#fi
-
 TAG=""
 ARCH="linux/amd64"
 
@@ -30,13 +24,6 @@ if [ -z "$TAG" ]; then
     print_usage
     exit 1
 fi
-
-#  --build-arg ANACONDA_API_TOKEN=$ANACONDA_API_TOKEN \
-#
-#docker build \
-#  --platform "$ARCH" -t "$TAG" \
-#  --no-cache .
-
 
 docker build --secret id=pypirc,src=/tmp/secrets/pypirc \
   --platform "$ARCH" -t "$TAG" .

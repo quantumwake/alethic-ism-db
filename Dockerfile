@@ -10,8 +10,8 @@ RUN uv venv
 
 # Install your package in editable mode using the virtual environment’s pip
 RUN source .venv/bin/activate && \
-    apk update && \
-    apk add git && \
+    apk --no-cache update && \
+    apk --no-cache add git gcc musl-dev postgresql-dev python3-dev && \
     uv pip install -U pip twine setuptools setuptools-scm build && \
     uv pip install -r requirements.txt
 
