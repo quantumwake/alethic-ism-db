@@ -1,11 +1,30 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
+name = "alethic-ism-db"
 dynamic = ["version"]
-#name = "alethic-ism-db"
-#description = "Alethic - Instruction-Based State Machine (Python DB SDK)"
+description = "Alethic Instruction-Based State Machine (DB Python SDK)"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+urls = { Homepage = "https://github.com/quantumwake/alethic-ism-db" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+
+[[project.authors]]
+name = "Kasra Rasaee"
+email = "krasaee@quantumwake.io"
+
+# If you have dependencies, list them under dependencies:
+# dependencies = [
+#     "some-package>=1.0",
+# ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools_scm]
 version_file = "_version.py"
