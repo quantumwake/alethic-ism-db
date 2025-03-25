@@ -2,8 +2,13 @@ name: Docker Build and Push Python to PyPi (alethic-ism-db python module)
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
+
+#on:
+#  push:
+#    branches:
+#      - main
 
 jobs:   
   build-and-upload:

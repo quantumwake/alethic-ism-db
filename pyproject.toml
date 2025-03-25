@@ -7,7 +7,7 @@ name = "alethic-ism-db"
 dynamic = ["version"]
 description = "Alethic Instruction-Based State Machine (DB Python SDK)"
 requires-python = ">=3.10"
-license = { text = "AGPL-3.0-or-later" }
+license = { file = "LICENSE" }
 urls = { Homepage = "https://github.com/quantumwake/alethic-ism-db" }
 classifiers = [
     "Programming Language :: Python :: 3",
