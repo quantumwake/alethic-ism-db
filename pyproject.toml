@@ -2,9 +2,9 @@
 requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
-#[project]
+[project]
+dynamic = ["version"]
 #name = "alethic-ism-db"
-#dynamic = ["version"]
 #description = "Alethic - Instruction-Based State Machine (Python DB SDK)"
 
 [tool.setuptools_scm]
