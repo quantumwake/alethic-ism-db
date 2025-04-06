@@ -3,6 +3,15 @@ create table user_profile (
     user_id varchar(36) not null primary key
 );
 
+-- create user profile credentials
+drop table if exists user_profile_credential cascade;
+create table user_profile_credential (
+    user_id varchar(36) not null primary key references user_profile (user_id),
+    type varchar(255) not null,
+    credentials varchar(255) not null,
+    created_date timestamp not null default current_timestamp
+);
+
 drop table if exists user_project cascade;
 create table user_project (
   project_id varchar(36) not null primary key,
@@ -158,10 +167,9 @@ delete from processor where provider_id in (select provider_id from processor_pr
 delete from processor_provider where name = 'Test';
 commit;
 
-select * from processor_provider;
-
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
-    ('language/models/openai/gpt-4o-current', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-4o', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-4o-mini', 'OpenAI', 'gpt-4o-mini', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-08-06', 'OpenAI', 'gpt-4o-2024-08-06', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-11-20', 'OpenAI', 'gpt-4o-2024-11-20', 'NaturalLanguageProcessing'),

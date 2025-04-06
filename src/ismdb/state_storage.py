@@ -26,17 +26,18 @@ logging = log.getLogger(__name__)
 
 class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
-    def fetch_state_data_by_column_id(self, column_id: int) -> Optional[StateDataRowColumnData]:
+    def fetch_state_data_by_column_id(self, column_id: int, offset: int | None = None, limit: int = 1000) -> Optional[StateDataRowColumnData]:
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
-                sql = f"""
-                    select * from state_column_data 
-                    where column_id = %s order by data_index
-                """
+                if offset is None:
+                    sql = f"select * from state_column_data where column_id = %s order by data_index"
+                    cursor.execute(sql, [column_id])
+                else:
+                    sql = f"select * from state_column_data where column_id = %s and data_index >= %s and data_index < %s order by data_index"
+                    cursor.execute(sql, [column_id, offset, limit])
 
-                cursor.execute(sql, [column_id])
                 rows = cursor.fetchall()
                 values = [row[2] for row in rows]
                 data = StateDataRowColumnData(
@@ -310,23 +311,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         conn = self.create_connection()
         last_persisted_position_index = 0
         try:
-
             track_mapping = set()
-            with conn.cursor() as cursor:
-
-                # sql = f"""insert into state_column_data (column_id, data_index, data_value) values (%s, %s, %s)"""
-                sql = """
-                    MERGE INTO state_column_data AS target
-                    USING (SELECT %s AS column_id, %s AS data_index, %s AS data_value) AS source
-                       ON target.column_id = source.column_id 
-                      AND target.data_index = source.data_index
-                    WHEN MATCHED THEN 
-                        UPDATE SET data_value = source.data_value
-                    WHEN NOT MATCHED THEN 
-                        INSERT (column_id, data_index, data_value)
-                        VALUES (source.column_id, source.data_index, source.data_value)
-                """
-
+            with (conn.cursor() as cursor):
                 for column, header in columns.items():
                     if column not in state.data:
                         logging.warning(f'no data found for column {column}, '
@@ -336,23 +322,45 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     column_id = header.id
 
                     if incremental:
-
                         data_count = state.data[column].count
-                        for data_index in range(state.persisted_position, data_count):
-                            column_row_data = state.data[column].values[data_index]
-                            values = [
-                                column_id,
-                                data_index,
-                                column_row_data
-                            ]
-                            cursor.execute(sql, values)
+                        total_to_insert = data_count - state.persisted_position
 
+                        def create_batch_row(data_index, column_row_data):
                             if column == 'state_key':
                                 track_mapping.add(column_row_data)
+                            return [column_id, data_index, column_row_data]
 
-                        # update the last position
-                        last_persisted_position_index = data_count - 1
+                        offset = state.persisted_position   # the last persisted position
+                        batch_size = 5000                   # maximum batch size
+                        while offset < total_to_insert:
+
+                            maximum_limit = max(offset + batch_size, data_count)
+
+                            insert_batch = [
+                                create_batch_row(data_index, column_row_data)
+                                for data_index, column_row_data in
+                                enumerate(state.data[column].values[offset : maximum_limit])
+                            ]
+
+                            cursor.executemany(
+                                "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
+                                insert_batch)
+                            offset += batch_size
+
                     else:
+
+                        sql = """
+                            MERGE INTO state_column_data AS target
+                            USING (SELECT %s AS column_id, %s AS data_index, %s AS data_value) AS source
+                               ON target.column_id = source.column_id 
+                              AND target.data_index = source.data_index
+                            WHEN MATCHED THEN 
+                                UPDATE SET data_value = source.data_value
+                            WHEN NOT MATCHED THEN 
+                                INSERT (column_id, data_index, data_value)
+                                VALUES (source.column_id, source.data_index, source.data_value)
+                            """.strip()
+
                         track_mapping = None
 
                         for data_index, column_row_data in enumerate(state.data[column].values):
@@ -564,22 +572,23 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         finally:
             self.release_connection(conn)
 
-    def fetch_state_column_data_mappings(self, state_id) \
+    def fetch_state_column_data_mappings(self, state_id, offset: int | None = None, limit: int = 1000) \
             -> Optional[Dict[str, StateDataColumnIndex]]:
         conn = self.create_connection()
 
         try:
             with conn.cursor() as cursor:
-                sql = f"""
-                    select state_key, data_index from state_column_data_mapping where state_id = %s
-                """
+                if offset is None:
+                    sql = f"select state_key, data_index from state_column_data_mapping where state_id = %s"
+                    cursor.execute(sql, [state_id])
+                else:
+                    sql = f"select state_key, data_index from state_column_data_mapping where state_id = %s and data_index >= %s and data_index < %s"
+                    cursor.execute(sql, [state_id, offset, limit])
 
-                cursor.execute(sql, [state_id])
                 rows = cursor.fetchall()
-
                 if not rows:
                     logging.debug(f'no mapping found for state_id: {state_id}')
-                    return
+                    return None
 
                 mappings: Dict[str, StateDataColumnIndex] = {}
                 for row in rows:
@@ -600,6 +609,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             raise e
         finally:
             self.release_connection(conn)
+            return None
 
     def insert_state_column_data_mapping(self, state: State, state_key_mapping_set: set = None):
 
@@ -743,30 +753,31 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         return state
 
+    # load the state columns by state id
     def load_state_columns(self, state_id: str) \
             -> Optional[Dict[str, StateDataColumnDefinition]]:
 
         # rebuild the column definition
         return self.fetch_state_columns(state_id=state_id)
 
-    def load_state_data(self, columns: Dict[str, StateDataColumnDefinition]) \
+    # load the state data by columns, with offset and limit if applied
+    def load_state_data(self, columns: Dict[str, StateDataColumnDefinition], offset: int | None = None, limit: int = 1000) \
             -> Optional[Dict[str, StateDataRowColumnData]]:
 
         # rebuild the data values by column and values
         return {
-            column: self.fetch_state_data_by_column_id(column_definition.id)
+            column: self.fetch_state_data_by_column_id(column_definition.id, offset=offset, limit=limit)
             for column, column_definition in columns.items()
             # if not column_definition.value  # TODO REMOVE since we now store all constant and expression values in .data[col].values[]  ...old: only return row data that is not a function or a constant
         }
 
-    def load_state_data_mappings(self, state_id: str) \
+    # rebuild the data state mapping
+    def load_state_data_mappings(self, state_id: str, offset: int | None = None, limit: int = 1000)  \
             -> Optional[Dict[str, StateDataColumnIndex]]:
+        return self.fetch_state_column_data_mappings(state_id=state_id, offset=offset, limit=limit)
 
-        # rebuild the data state mapping
-        return self.fetch_state_column_data_mappings(
-            state_id=state_id)
-
-    def load_state(self, state_id: str, load_data: bool = True) -> Optional[State]:
+    # load the state and all its details
+    def load_state(self, state_id: str, load_data: bool = True, offset: int | None = None, limit: int = 1000):
         # basic state instance
         state = self.load_state_basic(state_id=state_id)
 
@@ -775,11 +786,12 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         # load additional details about the state
         state.columns = self.load_state_columns(state_id=state_id)
-        state.data = self.load_state_data(columns=state.columns) if load_data else {}
+        state.data = self.load_state_data(columns=state.columns, offset=offset, limit=limit) if load_data else {}
         state.mapping = self.load_state_data_mappings(state_id=state_id) if load_data else {}
 
         return state
 
+    # delete cascade the state and all its details
     def delete_state_cascade(self, state_id):
         self.delete_state_data(state_id=state_id)
         self.delete_state_column(state_id=state_id)

@@ -3,7 +3,7 @@ import datetime as dt
 
 from typing import Optional
 
-from ismcore.model.base_model import UserProfile
+from ismcore.model.base_model import UserProfile, UserProfileCredential
 from ismcore.storage.processor_state_storage import UserProfileStorage
 
 from ismdb.base import BaseDatabaseAccessSinglePool
@@ -53,3 +53,41 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePoo
             self.release_connection(conn)
 
         return user_profile
+
+    def fetch_user_profile_credential(self, user_id: str) -> Optional[UserProfileCredential]:
+        user_profile_credentials = self.execute_query_many(
+            sql="select * from user_profile_credential",
+            conditions={"user_id": user_id},
+            mapper=lambda row: UserProfileCredential(**row)
+        )
+        return user_profile_credentials[0] if user_profile_credentials else None
+
+    def insert_user_profile_credential(self, user_profile_credential: UserProfileCredential) -> Optional[UserProfileCredential]:
+        conn = None
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                sql = """
+                     INSERT INTO user_profile_credential (user_id, type, credentials, created_date) 
+                     VALUES (%s, %s, %s, %s)
+                     ON CONFLICT (user_id) 
+                     DO UPDATE SET 
+                         credentials = EXCLUDED.credentials,
+                         type = EXCLUDED.type""".strip()
+
+                cursor.execute(sql, [
+                    user_profile_credential.user_id,
+                    user_profile_credential.type,
+                    user_profile_credential.credentials,
+                    dt.datetime.now(dt.timezone.utc)
+                ])
+
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            raise e
+        finally:
+            if conn:
+                self.release_connection(conn)
+
+        return user_profile_credential
