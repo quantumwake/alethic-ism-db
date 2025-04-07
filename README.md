@@ -8,38 +8,7 @@ The Alethic ISM DB (Python) backend interface is an extension of [alethic-ism-co
 - Postgres (crude but effective for now)
 - Lots of work needs to be done on the storage subsystem to scale it up in a distributed manner
 
-## Initialize Conda
-Create a new conda environment
-
-```bash
-conda install -y conda-build anaconda-client -c conda-forge --override-channels
-```
-```bash
-conda env create -f environment.yaml
-```
-
-## Acknowledgements
-Alethic Research, Princeton University Center for Human Values, New York University
-
 ## Known issues
-Update conda base version to fix warnings and potentially other issues related to outdated conda binaries.
-
-```bash
-conda update -n base -c defaults conda
-```
-
-**Error while loading conda entry point: conda-libmamba-solver** (No module named 'libmambapy') 
- This is a known issue with conda and can be resolved by running the following command:
-
-```bash
-conda install -n base -c conda-forge libmambapy --force-reinstall
-```
-```bash
-conda install -n base -c conda-forge libmamba --force-reinstall
-```
-```bash
-conda install -n base -c conda-forge mamba --force-reinstall
-```
 
 ## Cutting a Release:
 
