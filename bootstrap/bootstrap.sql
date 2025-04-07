@@ -333,7 +333,7 @@ create table if not exists usage
 );
 
 create index usage_project_idx on usage (project_id);
-create index user_project_user_id_idx on user_project (user_id)
+create index user_project_user_id_idx on user_project (user_id);
 
 -- USAGE VIEW FOR USAGE TABLE (extracts year, month, day, hour, minute, second from transaction_time)
 CREATE OR REPLACE VIEW usage_v
