@@ -1,6 +1,10 @@
 drop table if exists user_profile cascade;
 create table user_profile (
-    user_id varchar(36) not null primary key
+  user_id character varying(36) primary key not null,
+  email character varying(255),
+  created_date timestamp without time zone not null default CURRENT_TIMESTAMP,
+  name character varying(255),
+  max_agentic_units integer
 );
 
 -- create user profile credentials
@@ -17,10 +21,9 @@ create table user_project (
   project_id varchar(36) not null primary key,
   project_name varchar(255) not null,
   user_id varchar(36) not null references user_profile (user_id),
+  created_date timestamp not null default current_timestamp,
   unique (user_id, project_name)
 );
-
--- select gen_random_uuid();
 
 drop table if exists workflow_node cascade;
 create table workflow_node (
@@ -73,7 +76,6 @@ create table state_config (
     primary key (state_id, attribute)
 );
 
-
 drop table if exists state_column_key_definition;
 create table state_column_key_definition(
     id serial not null primary key,
@@ -119,24 +121,23 @@ create table state_column_data_mapping (
     primary key (state_id, state_key, data_index)
 );
 
-drop table if exists model cascade;
-create table model (
-    id serial primary key,
-    provider_name varchar(255) not null,
-    model_name varchar(255) not null,
-    unique (provider_name, model_name)
-);
-
-insert into model (provider_name, model_name) values ('OpenAI', 'gpt-4-1106-preview');
-insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.0');
-insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.1');
-commit;
+-- drop table if exists model cascade;
+-- create table model (
+--     id serial primary key,
+--     provider_name varchar(255) not null,
+--     model_name varchar(255) not null,
+--     unique (provider_name, model_name)
+-- );
+--
+-- insert into model (provider_name, model_name) values ('OpenAI', 'gpt-4-1106-preview');
+-- insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.0');
+-- insert into model (provider_name, model_name) values ('Anthropic', 'claude-2.1');
+-- commit;
 
 drop table if exists processor_class cascade;
 create table processor_class (
     class_name varchar(32) not null primary key
 );
-
 
 INSERT INTO processor_class VALUES
     ('CodeProcessing'),
@@ -153,6 +154,8 @@ INSERT INTO processor_class VALUES
     ('Interaction')
     ON CONFLICT DO NOTHING;
 
+COMMIT;
+
 DROP TABLE IF EXISTS processor_provider cascade;
 CREATE TABLE processor_provider (
     id VARCHAR(255) PRIMARY KEY,
@@ -162,10 +165,6 @@ CREATE TABLE processor_provider (
     user_id varchar(36) NULL REFERENCES user_profile (user_id),
     project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
 );
-
-delete from processor where provider_id in (select provider_id from processor_provider where name = 'Test');
-delete from processor_provider where name = 'Test';
-commit;
 
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
     ('language/models/openai/gpt-4o', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
@@ -218,7 +217,6 @@ create table processor (
     status processor_status not null
 );
 
-
 drop table if exists processor_property;
 create table processor_property (
     processor_id varchar(255) not null references processor(id),
@@ -250,20 +248,19 @@ create table processor_state (
 
 alter table processor_state add constraint processor_state_state_id_fk foreign key (state_id) references state(id);
 alter table processor_state add constraint processor_state_processor_id_fk foreign key (processor_id) references processor(id);
-
 commit;
 
-drop table if exists trace;
-create table if not exists trace
-(
-    id serial not null primary key,
-    partition   varchar(128)                            not null,
-    reference   varchar(128)                            not null,
-    action      varchar(255)                            not null,
-    action_time timestamp   default CURRENT_TIMESTAMP   not null,
-    level       trace_level default 'INFO'::trace_level not null,
-    message     text
-);
+-- drop table if exists trace;
+-- create table if not exists trace
+-- (
+--     id serial not null primary key,
+--     partition   varchar(128)                            not null,
+--     reference   varchar(128)                            not null,
+--     action      varchar(255)                            not null,
+--     action_time timestamp   default CURRENT_TIMESTAMP   not null,
+--     level       trace_level default 'INFO'::trace_level not null,
+--     message     text
+-- );
 
 drop table if exists monitor_log_event;
 create table monitor_log_event (
@@ -283,27 +280,6 @@ SELECT sc.*, sd.* FROM state_column sc
  LEFT OUTER JOIN state_column_data sd
    ON sc.id = sd.column_id
 ORDER BY state_id, data_index, column_id;
-
--- USAGE VIEW FOR USAGE TABLE (extracts year, month, day, hour, minute, second from transaction_time)
-CREATE OR REPLACE VIEW usage_v
-AS
-SELECT
-    extract(year from transaction_time) as year,
-    extract(month from transaction_time) as month,
-    extract(day from transaction_time) as day,
-    extract(hour from transaction_time) as hour,
-    extract(minute from transaction_time) as minute,
-    extract(second from transaction_time) as second,
-    up.user_id,
-    u.project_id,
-    u.resource_id,
-    u.resource_type,
-    u.unit_type,
-    u.unit_count
- FROM usage u
-INNER JOIN user_project up
-  ON up.project_id = u.project_id;
-
 
 --- VALIDATION FUNCTION FOR COLUMN ID
 DROP FUNCTION IF EXISTS validate_column_id;
@@ -345,26 +321,6 @@ drop table if exists usage;
 -- drop table if exists usage;
 create table if not exists usage
 (
-    id serial primary key,
-    transaction_time timestamp,
-    project_id varchar(36) not null references user_project (project_id),
-
-    -- resource information (e.g. a processor or a datasource
-    resource_id varchar(255) not null,      -- a processor id, or a datasource id, or a compute node id, or something else that we want to bill on
-    resource_type varchar(255) not null,    -- the type of resource this is, generally a processor or a datasource, or storage, etc.
-    unit_type        usage_unit_type            not null,
-    unit_subtype    usage_unit_subtype            not null,
-    unit_count       int          default 0 not null,
-    metadata    text null
-);
-
-create index usage_project_idx on usage (project_id);
-create index user_project_user_id_idx on user_project (user_id)
-
-
---- usage tables
-create table usage
-(
     id               serial primary key,
     transaction_time timestamp,
     project_id       varchar(36)        not null references public.user_project,
@@ -376,16 +332,40 @@ create table usage
     metadata         text
 );
 
--- audit logging table for various user functions
-create table audit (
-    partition varchar(128) not null,
-    reference varchar(128) not null,
-    action varchar(255) not null,
-    action_time timestamp not null default current_timestamp,
-    message text
-);
+create index usage_project_idx on usage (project_id);
+create index user_project_user_id_idx on user_project (user_id)
 
----
+-- USAGE VIEW FOR USAGE TABLE (extracts year, month, day, hour, minute, second from transaction_time)
+CREATE OR REPLACE VIEW usage_v
+AS
+SELECT
+    extract(year from transaction_time) as year,
+    extract(month from transaction_time) as month,
+    extract(day from transaction_time) as day,
+    extract(hour from transaction_time) as hour,
+    extract(minute from transaction_time) as minute,
+    extract(second from transaction_time) as second,
+    up.user_id,
+    u.project_id,
+    u.resource_id,
+    u.resource_type,
+    u.unit_type,
+    u.unit_count
+ FROM usage u
+INNER JOIN user_project up
+  ON up.project_id = u.project_id;
+
+
+-- audit logging table for various user functions
+-- create table audit (
+--     partition varchar(128) not null,
+--     reference varchar(128) not null,
+--     action varchar(255) not null,
+--     action_time timestamp not null default current_timestamp,
+--     message text
+-- );
+--
+--
 
 drop table if exists session cascade;
 create table session (
@@ -404,7 +384,6 @@ create table session_message (
     message_date timestamp not null
 );
 
--- auto-generated definition
 drop type if exists user_session_access_level cascade;
 create type user_session_access_level as enum ('default', 'admin');
 
@@ -451,15 +430,6 @@ CREATE INDEX idx_configuration_data ON config_map USING gin(data jsonb_path_ops)
 -- Index for filtering by type (optional optimization)
 CREATE INDEX idx_configuration_type ON config_map(type);
 
-
-
-alter table user_profile add column email varchar(255) null;
-alter table user_profile add column name varchar(255) null;
-alter table user_profile add column created_date timestamp not null default current_timestamp;
-alter table user_project add column created_date timestamp not null default current_timestamp;
-
-
-
 create index processor_state_processor_direction_idx on processor_state (processor_id, direction);
 create index processor_state_state_direction_idx on processor_state (state_id, direction);
 create index processor_state_processor on processor_state (processor_id);
@@ -478,8 +448,6 @@ create index state_column_data_mapping_state_idx on state_column_data_mapping (s
 create index monitor_log_event_user_id on monitor_log_event (user_id);
 create index monitor_log_event_project_id on monitor_log_event (project_id);
 create index monitor_log_event_user_and_project_id on monitor_log_event (user_id, project_id);
-
-
 
 -- Create ENUM type for action_type
 CREATE TYPE action_type_enum AS ENUM ('slider', 'text', 'yes/no', 'dropdown');

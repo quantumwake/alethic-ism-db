@@ -41,6 +41,16 @@ conda install -n base -c conda-forge libmamba --force-reinstall
 conda install -n base -c conda-forge mamba --force-reinstall
 ```
 
+## Cutting a Release:
+
+where b is the version number.
+```bash
+  git tag -a v1.0.x -m "Release version 1.0.x"
+```
+```bash
+  git push origin v1.0.x
+```
+
 # License
 Alethic ISM and all its components is made available under a dual licensing model by quantumwake.io.
 
@@ -51,3 +61,5 @@ Alethic ISM and all its components is made available under a dual licensing mode
   If you prefer to use Alethic ISM or any of its components in a proprietary or closed-source product without the obligations of the GPLv3, a commercial license is available. Please review our [Dual Licensing Agreement](DUAL_LICENSE.md) for details or contact us directly.
 
 For more information or licensing inquiries, please visit [https://quantumwake.io](https://quantumwake.io) or email us at [licensing@quantumwake.io](mailto:licensing@quantumwake.io).
+
+
