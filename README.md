@@ -1,4 +1,4 @@
-# Alethic Instruction-Based State Machine (ISM) Core SDK for Python
+# Alethic Instruction-Based State Machine (ISM) Database SDK for Python
 
 The Alethic ISM DB (Python SDK) backend interface is an extension of [alethic-ism-core](https://github.com/quantumwake/alethic-ism-core) and provides a set of base database access functions compatibility with postgres and other backend systems.
 
