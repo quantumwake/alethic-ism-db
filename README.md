@@ -1,10 +1,11 @@
-# Alethic Instruction-Based State Machine (DB Module)
-The Alethic ISM DB (Python) backend interface is an extension of [alethic-ism-core](https://github.com/quantumwake/alethic-ism-core) and provides a set of base database access functions compatibility with postgres and other backend systems.
+# Alethic Instruction-Based State Machine (ISM) Core SDK for Python
 
-- Database access functionality for the Alethic ISM models, including the State and other Functions of the ISM platform, the system as a whole.
-- Warning: this is a work in progress and is a crude implementation of a storage subsystem for the Alethic ISM platform (for python users). However, it works well enough for now.
+The Alethic ISM DB (Python SDK) backend interface is an extension of [alethic-ism-core](https://github.com/quantumwake/alethic-ism-core) and provides a set of base database access functions compatibility with postgres and other backend systems.
 
-## Current Support
+Refer to the [Alethic ISM project group](https://github.com/quantumwake/alethic), handling the core processor and state management code. 
+
+### Status 
+This project is actively under development and remains in an experimental/prototype phase. Contributions and feedback are welcome as the project evolves.
 - Postgres (crude but effective for now)
 - Lots of work needs to be done on the storage subsystem to scale it up in a distributed manner
 
@@ -12,23 +13,24 @@ The Alethic ISM DB (Python) backend interface is an extension of [alethic-ism-co
 
 ## Cutting a Release:
 
-where b is the version number.
-```bash
-  git tag -a v1.0.x -m "Release version 1.0.x"
-```
-```bash
-  git push origin v1.0.x
+```shell
+  export ISM_CORE_VERSION=v1.0.x
 ```
 
-# License
-Alethic ISM and all its components is made available under a dual licensing model by quantumwake.io.
+```bash
+  git tag -a ${ISM_CORE_VERSION} -m "Release version ${ISM_CORE_VERSION}"
+```
 
-- **Open Source License:**  
-  For community and open source use, the project is released under the [GNU General Public License v3 (GPLv3)](LICENSE). This license ensures that any modifications or derivative works distributed to the public remain open and free under the same terms.
+```bash
+  git push origin ${ISM_CORE_VERSION}
+```
 
-- **Commercial License:**  
-  If you prefer to use Alethic ISM or any of its components in a proprietary or closed-source product without the obligations of the GPLv3, a commercial license is available. Please review our [Dual Licensing Agreement](DUAL_LICENSE.md) for details or contact us directly.
+## License
+Alethic ISM is under a DUAL licensing model, please refer to [LICENSE.md](LICENSE.md).
 
-For more information or licensing inquiries, please visit [https://quantumwake.io](https://quantumwake.io) or email us at [licensing@quantumwake.io](mailto:licensing@quantumwake.io).
+**AGPL v3**  
+Intended for academic, research, and nonprofit institutional use. As long as all derivative works are also open-sourced under the same license, you are free to use, modify, and distribute the software.
 
+**Commercial License**
+Intended for commercial use, including production deployments and proprietary applications. This license allows for closed-source derivative works and commercial distribution. Please contact us for more information.
 
