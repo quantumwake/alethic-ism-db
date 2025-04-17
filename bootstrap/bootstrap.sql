@@ -212,7 +212,7 @@ create type processor_status AS ENUM (
 drop table if exists processor cascade;
 create table processor (
     id varchar(36) not null primary key,
-    provider_id varchar(255) not null references processor_provider (id),
+    provider_id varchar(255) null references processor_provider (id),
     project_id varchar(36) not null references user_project (project_id),
     status processor_status not null
 );
