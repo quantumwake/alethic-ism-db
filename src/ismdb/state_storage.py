@@ -1,7 +1,7 @@
 import logging as log
 import uuid
 
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Callable
 
 from ismcore.model.processor_state import (
     # state
@@ -424,86 +424,72 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             self.release_connection(conn)
 
 
-    def insert_state_primary_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition] | None:
+    def insert_generic_key_definition(
+            self,
+            state: 'State',
+            key_definition_type: str,
+            get_definitions_fn: Callable[['State'], Optional[List['StateDataKeyDefinition']]]
+    ) -> Optional[List['StateDataKeyDefinition']]:
 
-        if not isinstance(state.config, BaseStateConfig):
+        if isinstance(state.config, BaseStateConfig):
             return []
 
-        if not state.config.primary_key:
-            logging.debug(f'no primary key defined for state_id: {state.id}, name: {state.config.name}')
+        if not isinstance(state.config, StateConfig):
+            return []
+
+        definitions = get_definitions_fn(state)
+        if not definitions:
+            logging.debug(
+                f'No {key_definition_type} defined for state_id: {state.id}, name: {state.config.name}'
+            )
             return None
 
-        primary_key_definition = state.config.primary_key
         return self.insert_state_key_definition(
             state=state,
-            key_definition_type='primary_key',
-            definitions=primary_key_definition)
+            key_definition_type=key_definition_type,
+            definitions=definitions
+        )
 
+    def insert_state_primary_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition] | None:
+        return self.insert_generic_key_definition(
+            state=state,
+            key_definition_type='primary_key',
+            get_definitions_fn=lambda s: getattr(s.config, 'primary_key', None)
+        )
 
     def insert_state_join_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition] | None:
-
-        if not isinstance(state.config, BaseStateConfig):
-            return []
-
-        if not state.config.state_join_key:
-            logging.debug(f'no join key defined for state_id: {state.id}, name: {state.config.name}')
-            return None
-
-        primary_key_definition = state.config.state_join_key
-        return self.insert_state_key_definition(
+        return self.insert_generic_key_definition(
             state=state,
             key_definition_type='state_join_key',
-            definitions=primary_key_definition)
+            get_definitions_fn=lambda s: getattr(s.config, 'state_join_key', None)
+        )
 
     def insert_query_state_inheritance_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition] | None:
-
-        if not isinstance(state.config, BaseStateConfig):
-            return []
-
-        if not state.config.query_state_inheritance:
-            logging.debug(f'no inheritance defined for state_id: {state.id}, name: {state.config.name}')
-            return None
-
-        query_state_inheritance = state.config.query_state_inheritance
-        return self.insert_state_key_definition(
+        return self.insert_generic_key_definition(
             state=state,
             key_definition_type='query_state_inheritance',
-            definitions=query_state_inheritance)
+            get_definitions_fn=lambda s: getattr(s.config, 'query_state_inheritance', None)
+        )
 
     def insert_remap_query_state_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition] | None:
-
-        if not isinstance(state.config, BaseStateConfig):
-            return []
-
-        if not state.config.remap_query_state_columns:
-            logging.debug(f'no query state column remapping defined for state_id: {state.id}, name: {state.config.name}')
-            return None
-
-        remap_query_state_columns = state.config.remap_query_state_columns
-        return self.insert_state_key_definition(
+        return self.insert_generic_key_definition(
             state=state,
             key_definition_type='remap_query_state_columns',
-            definitions=remap_query_state_columns)
+            get_definitions_fn=lambda s: getattr(s.config, 'remap_query_state_columns', None)
+        )
 
     def insert_template_columns_key_definition(self, state: State) \
             -> List[StateDataKeyDefinition] | None:
-
-        if not isinstance(state.config, BaseStateConfig):
-            return []
-
-        if not state.config.template_columns:
-            logging.debug(f'no template columns projections defined for state_id: {state.id}, name: {state.config.name}')
-            return None
-
-        template_columns = state.config.template_columns
-        return self.insert_state_key_definition(
+        return self.insert_generic_key_definition(
             state=state,
             key_definition_type='template_columns',
-            definitions=template_columns)
+            get_definitions_fn=lambda s: getattr(s.config, 'template_columns', None)
+        )
+
 
     def insert_state_key_definition(self, state: State, key_definition_type: str,
                                     definitions: List[StateDataKeyDefinition]) \
