@@ -234,7 +234,6 @@ def create_mock_random_state(state_id: str = None, project_id: str = None, add_d
 
     return state
 
-
 def create_mock_state_for_incremental_save() -> State:
     state = State(
         config=StateConfigLM(

@@ -1,5 +1,7 @@
 import os
 import time
+import unittest
+
 import pytest
 
 from ismcore.utils.state_utils import validate_processor_status_change
@@ -203,6 +205,54 @@ def test_state_with_id():
     assert loaded_state.id == saved_state.id
     assert loaded_state.state_type == state.state_type
     assert loaded_state.state_type == "StateConfig"
+
+class MyTestCase(unittest.TestCase):
+
+    def test_incremental_save_without_primary_key(self):
+        state = State(
+            config=StateConfig(name="Test State")
+        )
+
+        state.persisted_position = -1
+        state.apply_query_state(query_state={
+            "test_column_1": "test value 1_1",
+            "test_column_2": "test value 1_2"
+        })
+        state = db_storage.save_state(state=state)
+        assert state is not None
+        assert state.count == 1
+        assert state.persisted_position == 0 # index
+        assert state.data["test_column_1"].count == 1
+        assert state.data["test_column_2"].count == 1
+
+        state = db_storage.load_state(state_id=state.id, load_data=True)
+        assert state is not None
+        assert state.count == 1
+        assert state.data["test_column_1"].count == 1
+        assert state.data["test_column_2"].count == 1
+        assert state.data["test_column_1"].values[0] == "test value 1_1"
+        assert state.data["test_column_2"].values[0] == "test value 1_2"
+
+        state.apply_query_state(query_state={
+            "test_column_1": "test value 2_1",
+            "test_column_2": "test value 2_2"
+        })
+
+        state = db_storage.save_state(state=state)
+        assert state is not None
+        assert state.count == 2
+        assert state.persisted_position == 1 # index
+
+        state = db_storage.load_state(state_id=state.id, load_data=True)
+        assert state is not None
+        assert state.data["test_column_1"].count == 2
+        assert state.data["test_column_2"].count == 2
+        assert state.data["test_column_1"].values[0] == "test value 1_1"
+        assert state.data["test_column_2"].values[0] == "test value 1_2"
+        assert state.data["test_column_1"].values[1] == "test value 2_1"
+        assert state.data["test_column_2"].values[1] == "test value 2_2"
+
+
 
 
 def test_incremental_save_state():
@@ -543,6 +593,7 @@ def test_processor_state_fetch_by_project_id():
     )
 
     assert len(processor_states) == 1
+
 
 
 def test_create_state__data_and_delete_state_data():

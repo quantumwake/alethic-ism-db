@@ -330,8 +330,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                                 track_mapping.add(column_row_data)
                             return [column_id, data_index, column_row_data]
 
-                        offset = state.persisted_position   # the last persisted position
-                        batch_size = 5000                   # maximum batch size
+                        offset = state.persisted_position + 1  # the last persisted position
+                        batch_size = 5000                      # maximum batch size
                         while offset < total_to_insert:
 
                             maximum_limit = max(offset + batch_size, data_count)
@@ -730,16 +730,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             raise NotImplementedError(f'unsupported type {state_type}')
 
         state.config = config
-        state.persisted_position = state.count - 1
-
-        # count = state.count
-        # build the state definition
-        # state_instance = State(
-        #     **state_dict,
-        #     config=config,
-        #     persisted_position=count - 1,
-        # )
-
         return state
 
     # load the state columns by state id
@@ -777,6 +767,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         state.columns = self.load_state_columns(state_id=state_id)
         state.data = self.load_state_data(columns=state.columns, offset=offset, limit=limit) if load_data else {}
         state.mapping = self.load_state_data_mappings(state_id=state_id) if load_data else {}
+        state.persisted_position = state.count - 1
 
         return state
 
@@ -904,6 +895,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             update_values={"count": state.count},
             conditions={"id": state.id}
         )
+        state.persisted_position = state.count - 1
         return state
 
     def save_state(self, state: State, options: dict = None) -> State:
@@ -927,6 +919,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             self.insert_query_state_inheritance_key_definition(state=state)
             self.insert_remap_query_state_columns_key_definition(state=state)
             self.insert_template_columns_key_definition(state=state)
+            self.update_state_count(state=state)
         else:
             state_id = create_state_id_by_state(state)
 
@@ -939,5 +932,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             # only save the state if there were changes made, track by primary key updates from previous calls
             if primary_key_mapping_update_set:
                 self.insert_state(state=state)
+
+            # update state count
+            self.update_state_count(state=state)
 
         return state
