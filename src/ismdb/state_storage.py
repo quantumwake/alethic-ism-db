@@ -328,6 +328,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                         def create_batch_row(data_index, column_row_data):
                             if column == 'state_key':
                                 track_mapping.add(column_row_data)
+
                             return [column_id, data_index, column_row_data]
 
                         offset = state.persisted_position + 1  # the last persisted position
@@ -337,7 +338,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                             maximum_limit = max(offset + batch_size, data_count)
 
                             insert_batch = [
-                                create_batch_row(data_index, column_row_data)
+                                create_batch_row(data_index + offset, column_row_data)
                                 for data_index, column_row_data in
                                 enumerate(state.data[column].values[offset : maximum_limit])
                             ]
