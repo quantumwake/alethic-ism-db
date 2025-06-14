@@ -915,7 +915,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             return options[name] if name in options else default
 
         force_update_column = fetch_option('force_update_column', False)
-        first_time = state.persisted_position <= 0
+        first_time = state.persisted_position < 0
         if not self.incremental or first_time:
             state = self.insert_state(state=state)
             self.insert_state_config(state=state)
