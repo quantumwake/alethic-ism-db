@@ -309,9 +309,16 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             return
 
         conn = self.create_connection()
-        last_persisted_position_index = 0
+        persisted_position = state.persisted_position   # keep track and update at the end
         try:
             track_mapping = set()
+
+            def create_batch_row(data_index, column_row_data):
+                if column == 'state_key':
+                    track_mapping.add(column_row_data)
+
+                return [column_id, data_index, column_row_data]
+
             with (conn.cursor() as cursor):
                 for column, header in columns.items():
                     if column not in state.data:
@@ -321,36 +328,49 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
                     column_id = header.id
 
+                    # incrementally adding data in batches, instead of iterating the entire set again
                     if incremental:
                         data_count = state.data[column].count
-                        total_to_insert = data_count - state.persisted_position
-                        last_persisted_position_index = state.persisted_position
+                        offset = state.persisted_position + 1
+                        batch_size = 5000
 
-                        def create_batch_row(data_index, column_row_data):
-                            if column == 'state_key':
-                                track_mapping.add(column_row_data)
-
-                            return [column_id, data_index, column_row_data]
-
-                        offset = state.persisted_position + 1  # the last persisted position
-                        batch_size = 5000                      # maximum batch size
-                        while offset < total_to_insert:
-
-                            maximum_limit = max(offset + batch_size, data_count)
+                        while offset < data_count:
+                            # Fix: use min() to properly limit batch size
+                            end_index = min(offset + batch_size, data_count)
 
                             insert_batch = [
-                                create_batch_row(data_index + offset, column_row_data)
+                                create_batch_row(
+                                    data_index + offset,  # Correct: absolute index in full dataset
+                                    column_row_data
+                                )
                                 for data_index, column_row_data in
-                                enumerate(state.data[column].values[offset : maximum_limit])
+                                enumerate(state.data[column].values[offset:end_index])
                             ]
 
                             cursor.executemany(
                                 "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
-                                insert_batch)
-                            offset += batch_size
+                                insert_batch
+                            )
 
-                        last_persisted_position_index += len(insert_batch)
-
+                            offset = end_index
+                            persisted_position = end_index - 1
+                        #
+                        # offset = state.persisted_position + 1  # the last persisted position
+                        # batch_size = 5000                      # maximum batch size
+                        # while offset < data_count:
+                        #     maximum_limit = max(offset + batch_size, data_count)
+                        #
+                        #     insert_batch = [
+                        #         create_batch_row(data_index + offset, column_row_data)
+                        #         for data_index, column_row_data in
+                        #         enumerate(state.data[column].values[offset : maximum_limit])
+                        #     ]
+                        #
+                        #     cursor.executemany(
+                        #         "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
+                        #         insert_batch)
+                        #     offset += batch_size
+                        #
                     else:
 
                         sql = """
@@ -374,14 +394,10 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                                 column_row_data
                             ]
                             cursor.execute(sql, values)
+                            persisted_position = data_index
 
-                            # if last_position_marker != 0 and data_index < last_position_marker:
-                            #     raise Exception(f'critical error handling data index position, expected {last_position_marker}>={data_index}')
-
-                            last_persisted_position_index = data_index
-
+            state.persisted_position = persisted_position
             conn.commit()
-            state.persisted_position = last_persisted_position_index
             return track_mapping
         except Exception as e:
             logging.error(e)

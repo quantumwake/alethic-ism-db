@@ -254,6 +254,17 @@ class MyTestCase(unittest.TestCase):
         assert state.data["test_column_1"].values[1] == "test value 2_1"
         assert state.data["test_column_2"].values[1] == "test value 2_2"
 
+        for idx in range(6, 10):
+            state.apply_query_state(query_state={
+                "test_column_1": f"test value {idx}_1",
+                "test_column_2": f"test value {idx}_2"
+            })
+
+        state = db_storage.save_state(state=state)
+        state = db_storage.load_state(state_id=state.id, load_data=True)
+        assert state is not None
+
+
 
 
 
