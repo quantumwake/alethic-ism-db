@@ -1,4 +1,5 @@
 .idea
+.claude
 .env
 .DS_Store
 .venv/

@@ -423,10 +423,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         finally:
             self.release_connection(conn)
 
-    def insert_state_primary_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition]:
 
-        if type(state.config) is BaseStateConfig:
+    def insert_state_primary_key_definition(self, state: State) \
+            -> List[StateDataKeyDefinition] | None:
+
+        if not isinstance(state.config, BaseStateConfig):
             return []
 
         if not state.config.primary_key:
@@ -441,14 +442,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
 
     def insert_state_join_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition]:
+            -> List[StateDataKeyDefinition] | None:
 
-        if type(state.config) is BaseStateConfig:
+        if not isinstance(state.config, BaseStateConfig):
             return []
 
         if not state.config.state_join_key:
-            logging.debug(f'no primary key defined for state_id: {state.id}, name: {state.config.name}')
-            return
+            logging.debug(f'no join key defined for state_id: {state.id}, name: {state.config.name}')
+            return None
 
         primary_key_definition = state.config.state_join_key
         return self.insert_state_key_definition(
@@ -457,14 +458,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             definitions=primary_key_definition)
 
     def insert_query_state_inheritance_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition]:
+            -> List[StateDataKeyDefinition] | None:
 
-        if type(state.config) is BaseStateConfig:
+        if not isinstance(state.config, BaseStateConfig):
             return []
 
         if not state.config.query_state_inheritance:
-            logging.debug(f'no query_state_inheritance defined for state_id: {state.id}, name: {state.config.name}')
-            return
+            logging.debug(f'no inheritance defined for state_id: {state.id}, name: {state.config.name}')
+            return None
 
         query_state_inheritance = state.config.query_state_inheritance
         return self.insert_state_key_definition(
@@ -473,14 +474,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             definitions=query_state_inheritance)
 
     def insert_remap_query_state_columns_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition]:
+            -> List[StateDataKeyDefinition] | None:
 
-        if type(state.config) is BaseStateConfig:
+        if not isinstance(state.config, BaseStateConfig):
             return []
 
         if not state.config.remap_query_state_columns:
-            logging.debug(f'no remap_query_state_columns defined for state_id: {state.id}, name: {state.config.name}')
-            return
+            logging.debug(f'no query state column remapping defined for state_id: {state.id}, name: {state.config.name}')
+            return None
 
         remap_query_state_columns = state.config.remap_query_state_columns
         return self.insert_state_key_definition(
@@ -489,14 +490,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             definitions=remap_query_state_columns)
 
     def insert_template_columns_key_definition(self, state: State) \
-            -> List[StateDataKeyDefinition]:
+            -> List[StateDataKeyDefinition] | None:
 
-        if type(state.config) is BaseStateConfig:
+        if not isinstance(state.config, BaseStateConfig):
             return []
 
         if not state.config.template_columns:
-            logging.debug(f'no template_columns defined for state_id: {state.id}, name: {state.config.name}')
-            return
+            logging.debug(f'no template columns projections defined for state_id: {state.id}, name: {state.config.name}')
+            return None
 
         template_columns = state.config.template_columns
         return self.insert_state_key_definition(
@@ -506,9 +507,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
     def insert_state_key_definition(self, state: State, key_definition_type: str,
                                     definitions: List[StateDataKeyDefinition]) \
-            -> List[StateDataKeyDefinition]:
+            -> List[StateDataKeyDefinition] | None:
 
         state_id = create_state_id_by_state(state=state)
+
+        if not definitions:
+            logging.info(
+                f'no key definitions defined for state_id: {state_id}, key_definition_type: {key_definition_type}')
+            return None
 
         if not definitions:
             logging.info(
