@@ -233,20 +233,22 @@ class MyTestCase(unittest.TestCase):
         assert state.data["test_column_1"].values[0] == "test value 1_1"
         assert state.data["test_column_2"].values[0] == "test value 1_2"
 
-        state.apply_query_state(query_state={
-            "test_column_1": "test value 2_1",
-            "test_column_2": "test value 2_2"
-        })
+        for idx in range(2, 5):
+            state.apply_query_state(query_state={
+                "test_column_1": f"test value {idx}_1",
+                "test_column_2": f"test value {idx}_2"
+            })
+
 
         state = db_storage.save_state(state=state)
         assert state is not None
-        assert state.count == 2
-        assert state.persisted_position == 1 # index
+        assert state.count == 4
+        assert state.persisted_position == 3 # index
 
         state = db_storage.load_state(state_id=state.id, load_data=True)
         assert state is not None
-        assert state.data["test_column_1"].count == 2
-        assert state.data["test_column_2"].count == 2
+        assert state.data["test_column_1"].count == 4
+        assert state.data["test_column_2"].count == 4
         assert state.data["test_column_1"].values[0] == "test value 1_1"
         assert state.data["test_column_2"].values[0] == "test value 1_2"
         assert state.data["test_column_1"].values[1] == "test value 2_1"

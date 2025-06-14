@@ -324,6 +324,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     if incremental:
                         data_count = state.data[column].count
                         total_to_insert = data_count - state.persisted_position
+                        last_persisted_position_index = state.persisted_position
 
                         def create_batch_row(data_index, column_row_data):
                             if column == 'state_key':
@@ -347,6 +348,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                                 "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
                                 insert_batch)
                             offset += batch_size
+
+                        last_persisted_position_index += len(insert_batch)
 
                     else:
 
