@@ -431,9 +431,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             get_definitions_fn: Callable[['State'], Optional[List['StateDataKeyDefinition']]]
     ) -> Optional[List['StateDataKeyDefinition']]:
 
-        if isinstance(state.config, BaseStateConfig):
-            return []
-
         if not isinstance(state.config, StateConfig):
             return []
 
