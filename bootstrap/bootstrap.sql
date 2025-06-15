@@ -196,6 +196,7 @@ INSERT INTO processor_provider (id, name, version, class_name) VALUES
     ('data/transformers/sampler/state-sample-multiplier-1.0', 'State Sample Multiplier', 'state-sample-multiplier-1.0', 'DataTransformation'),
     ('data/source/sql-1.0', 'SQL', 'sql-1.0', 'DatabaseProcessing'),
     ('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing'),
+    ('code/executor/mako/mako-executor-1.0', 'Mako Executor', 'mako-executor-1.0', 'CodeProcessing'),
     ('interaction/user/user-interaction', 'User Interaction', 'user-interaction-1.0', 'Interaction')
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
