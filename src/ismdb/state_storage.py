@@ -36,7 +36,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     cursor.execute(sql, [column_id])
                 else:
                     sql = f"select * from state_column_data where column_id = %s and data_index >= %s and data_index < %s order by data_index"
-                    cursor.execute(sql, [column_id, offset, limit])
+                    cursor.execute(sql, [column_id, offset, offset + limit])
 
                 rows = cursor.fetchall()
                 values = [row[2] for row in rows]
