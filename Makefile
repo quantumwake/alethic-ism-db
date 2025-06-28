@@ -1,5 +1,5 @@
 # Makefile
-.PHONY: build push deploy all
+.PHONY: build push deploy all version
 
 # Default image name - can be overridden with make IMAGE=your-image-name
 IMAGE ?= krasaee/alethic-ism-db:latest
@@ -23,6 +23,25 @@ push:
 .PHONY: deploy
 deploy:
 	 sh docker_deploy.sh -i $(IMAGE)
+
+# Version bump (patch version)
+version:
+	@echo "Bumping patch version..."
+	@git fetch --tags
+	@LATEST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
+	if [[ -z "$$LATEST_TAG" ]]; then \
+		MAJOR=0; MINOR=1; PATCH=0; \
+		OLD_TAG="<none>"; \
+	else \
+		OLD_TAG="$$LATEST_TAG"; \
+		VERSION="$${LATEST_TAG#v}"; \
+		IFS='.' read -r MAJOR MINOR PATCH <<< "$$VERSION"; \
+		PATCH=$$((PATCH + 1)); \
+	fi; \
+	NEW_TAG="v$${MAJOR}.$${MINOR}.$${PATCH}"; \
+	git tag -a "$$NEW_TAG" -m "Release $$NEW_TAG"; \
+	git push origin "$$NEW_TAG"; \
+	echo "➜ bumped $${OLD_TAG} → $${NEW_TAG}"
 
 # Build helm postgres init image
 # Default initdb image name and tag - can be overridden with make INITDB_IMAGE=your-image-name INITDB_TAG=your-tag

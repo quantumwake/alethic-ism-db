@@ -351,9 +351,9 @@ SELECT
     u.resource_id,
     u.resource_type,
     u.unit_type,
-    u.unit_count
+    COALESCE(u.unit_count, 0) as unit_count
  FROM usage u
-INNER JOIN user_project up
+RIGHT OUTER JOIN user_project up
   ON up.project_id = u.project_id;
 
 
