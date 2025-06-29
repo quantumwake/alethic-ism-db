@@ -249,10 +249,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     max_length, 
                     dimensions, 
                     value, 
-                    source_column_name)
+                    source_column_name,
+                    display_order)
                 VALUES (
                     COALESCE(validate_column_id(%s, %s), nextval('state_column_id_seq'::regclass)),
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id, state_id)
                     DO UPDATE SET 
                         name = EXCLUDED.name, 
@@ -261,7 +262,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                         callable = EXCLUDED.callable,
                         min_length = EXCLUDED.min_length,
                         max_length = EXCLUDED.max_length,
-                        value = EXCLUDED.value
+                        value = EXCLUDED.value,
+                        display_order = EXCLUDED.display_order
                 RETURNING id 
                 """
 
@@ -281,7 +283,8 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                         column_definition.max_length,
                         column_definition.dimensions,
                         column_definition.value,
-                        column_definition.source_column_name
+                        column_definition.source_column_name,
+                        column_definition.display_order
                     ]
 
                     cursor.execute(sql, values)

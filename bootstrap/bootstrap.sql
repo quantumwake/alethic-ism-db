@@ -102,6 +102,8 @@ create table state_column (
     source_column_name varchar(255)
 );
 
+alter table state_column add column display_order int default 0;
+
 create unique index state_column_unique_key on state_column (id, state_id);
 create unique index state_column_state_name_ux on state_column (state_id, name);
 
