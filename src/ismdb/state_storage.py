@@ -930,6 +930,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             return options[name] if name in options else default
 
         force_update_column = fetch_option('force_update_column', False)
+        force_update_count = fetch_option('force_update_count', True)
         first_time = state.persisted_position < 0
         if not self.incremental or first_time:
             state = self.insert_state(state=state)
@@ -942,10 +943,9 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             self.insert_query_state_inheritance_key_definition(state=state)
             self.insert_remap_query_state_columns_key_definition(state=state)
             self.insert_template_columns_key_definition(state=state)
-            self.update_state_count(state=state)
+            if force_update_count:
+                self.update_state_count(state=state)
         else:
-            state_id = create_state_id_by_state(state)
-
             # the incremental function returns the list of state keys that need to be applied
             primary_key_mapping_update_set = self.insert_state_columns_data(state=state, incremental=True)
 
@@ -957,6 +957,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                 self.insert_state(state=state)
 
             # update state count
-            self.update_state_count(state=state)
+            if force_update_count:
+                self.update_state_count(state=state)
 
         return state
