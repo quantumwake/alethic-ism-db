@@ -431,6 +431,23 @@ CREATE INDEX idx_configuration_data ON config_map USING gin(data jsonb_path_ops)
 -- Index for filtering by type (optional optimization)
 CREATE INDEX idx_configuration_type ON config_map(type);
 
+-- Table for filters
+DROP TABLE IF EXISTS filter CASCADE;
+CREATE TABLE filter (
+    id VARCHAR(255) PRIMARY KEY, -- Unique identifier for the filter
+    name VARCHAR(255), -- Filter name
+    user_id VARCHAR(36) NOT NULL REFERENCES user_profile(user_id), -- Owner of the filter
+    filter_items JSONB NOT NULL DEFAULT '{}', -- Filter items stored as JSON
+    created_date TIMESTAMP DEFAULT NOW(),
+    updated_date TIMESTAMP DEFAULT NOW()
+);
+
+-- Index for user_id to optimize queries by user
+CREATE INDEX idx_filter_user_id ON filter(user_id);
+
+-- Index for JSONB filter_items to optimize queries
+CREATE INDEX idx_filter_items ON filter USING gin(filter_items jsonb_path_ops);
+
 create index processor_state_processor_direction_idx on processor_state (processor_id, direction);
 create index processor_state_state_direction_idx on processor_state (state_id, direction);
 create index processor_state_processor on processor_state (processor_id);

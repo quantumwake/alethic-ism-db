@@ -16,6 +16,7 @@ from ismdb.user_project_storage import UserProjectDatabaseStorage
 from ismdb.user_storage import UserProfileDatabaseStorage
 from ismdb.vault_storage import VaultDatabaseStorage
 from ismdb.workflow_storage import WorkflowDatabaseStorage
+from ismdb.filter import FilterDatabaseStorage
 
 logging = log.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class PostgresDatabaseStorage(StateMachineStorage):
             state_action_storage=StateActionDatabaseStorage(database_url=database_url, incremental=incremental),
             vault_storage=VaultDatabaseStorage(database_url=database_url, incremental=incremental),
             config_map_storage=ConfigMapDatabaseStorage(database_url=database_url, incremental=incremental),
+            filter_storage=FilterDatabaseStorage(database_url=database_url, incremental=incremental),
         )
 
 #
