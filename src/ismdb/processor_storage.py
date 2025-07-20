@@ -23,23 +23,13 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
         if not processors:
             return []
 
-        for p in processors:
-            p.properties = self.fetch_processor_properties(processor_id=p.id)
-
         return processors
 
     def fetch_processor(self, processor_id: str) -> Optional[Processor]:
-        processor = self.execute_query_one(
+        return self.execute_query_one(
             sql="SELECT * FROM processor",
-            conditions={
-                'id': processor_id
-            },
+            conditions={'id': processor_id},
             mapper=lambda row: Processor(**row))
-
-        if processor:
-            processor.properties = self.fetch_processor_properties(processor_id=processor_id)
-
-        return processor
 
     def change_processor_status(self, processor_id: str, status: ProcessorStatusCode) -> int:
         if not processor_id:
@@ -55,17 +45,18 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
             }
         )
 
-    def insert_processor(self, processor: Processor) -> Processor:
+    def insert_processor(self, processor: Processor) -> Processor | None:
         try:
             conn = self.create_connection()
             with conn.cursor() as cursor:
                 sql = f"""
-                    INSERT INTO processor (id, provider_id, project_id, status)
-                         VALUES (%s, %s, %s, %s)
+                    INSERT INTO processor (id, provider_id, project_id, name, properties, status)
+                         VALUES (%s, %s, %s, %s, %s, %s)
                              ON CONFLICT (id) 
                       DO UPDATE SET 
-                        provider_id = EXCLUDED.provider_id
---                         status = EXCLUDED.status
+                        provider_id = EXCLUDED.provider_id,
+                        properties = EXCLUDED.properties,
+                        name = EXCLUDED.name
                 """
 
                 processor.id = processor.id if processor.id else str(uuid.uuid4())
@@ -74,6 +65,8 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
                     processor.id,
                     processor.provider_id,
                     processor.project_id,
+                    processor.name,
+                    processor.properties,
                     processor.status.value
                 ])
 
@@ -92,70 +85,3 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
                 'id': processor_id
             }
         )
-
-    def fetch_processor_properties(self, processor_id: str, name: str = None) -> Optional[List[ProcessorProperty]]:
-        return self.execute_query_many(
-            sql="SELECT * FROM processor_property",
-            conditions={
-                'processor_id': processor_id,
-                'name': name
-            },
-            mapper=lambda row: ProcessorProperty(**row))
-    #c
-    # def fetch_processor_property_by_name(self, processor_id: str, property_name: str):
-    #     return self.execute_query_one(
-    #         sql="SELECT * FROM processor_property",
-    #         conditions={
-    #             'processor_id': processor_id,
-    #             'name': property_name
-    #         },
-    #         mapper=lambda row: ProcessorProperty(**row)
-    #     )
-    #
-    # def update_processor_property(self, processor_id: str, property_name: str, property_value: str) -> int:
-    #     return self.execute_update(
-    #         table="processor_property",
-    #         update_values={
-    #             "value": property_value
-    #         },
-    #         conditions={
-    #             'processor_id': processor_id,
-    #             'name': property_name
-    #         },
-    #     )
-    #
-    # def insert_processor_properties(self, properties: List[ProcessorProperty]) -> List[ProcessorProperty]:
-    #     try:
-    #         conn = self.create_connection()
-    #         with conn.cursor() as cursor:
-    #             sql = f"""
-    #                 INSERT INTO processor_property (processor_id, name, value)
-    #                      VALUES (%s, %s, %s)
-    #                          ON CONFLICT (processor_id, name)
-    #                   DO UPDATE SET
-    #                        value = EXCLUDED.value
-    #             """
-    #
-    #             for property in properties:
-    #                 cursor.execute(sql, [
-    #                     property.processor_id,
-    #                     property.name,
-    #                     property.value
-    #                 ])
-    #
-    #             conn.commit()
-    #         return properties
-    #     except Exception as e:
-    #         logging.error(e)
-    #         raise e
-    #     finally:
-    #         self.release_connection(conn)
-    #
-    # def delete_processor_property(self, processor_id: str, name: str) -> int:
-    #     return self.execute_delete_query(
-    #         sql="DELETE FROM processor_property",
-    #         conditions={
-    #             'processor_id': processor_id,
-    #             'name': name
-    #         }
-    #     )

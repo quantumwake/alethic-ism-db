@@ -25,6 +25,8 @@ create table user_project (
   unique (user_id, project_name)
 );
 
+alter table user_project add column updated_date timestamp not null default current_timestamp;
+
 drop table if exists workflow_node cascade;
 create table workflow_node (
     node_id varchar(36) not null primary key,
@@ -168,6 +170,10 @@ CREATE TABLE processor_provider (
     project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
 );
 
+alter table processor_provider add column route jsonb null;
+alter table processor_provider add column created_date timestamp not null default current_timestamp;
+alter table processor_provider add column updated_date timestamp null default null;
+
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
     ('language/models/openai/gpt-4o', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-mini', 'OpenAI', 'gpt-4o-mini', 'NaturalLanguageProcessing'),
@@ -220,13 +226,10 @@ create table processor (
     status processor_status not null
 );
 
-drop table if exists processor_property;
-create table processor_property (
-    processor_id varchar(255) not null references processor(id),
-    name varchar(255) not null,
-    value text,
-    primary key (processor_id, name)
-);
+alter table processor add column properties jsonb null;
+alter table processor add column name null;
+alter table processor add column created_date timestamp not null default current_timestamp;
+alter table processor add column updated_date timestamp null default null;
 
 drop type if exists processor_state_direction cascade;
 create type processor_state_direction AS ENUM (
@@ -409,8 +412,8 @@ CREATE TABLE vault (
     name VARCHAR(255) NOT NULL UNIQUE, -- Provider name (e.g., AWS KMS, HashiCorp Vault)
     type VARCHAR(50) NOT NULL, -- Provider type (e.g., 'kms', 'vault', 'local')
     metadata JSONB, -- Additional metadata for the provider (e.g., region, endpoint)
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    created_date TIMESTAMP DEFAULT NOW(),
+    updated_date TIMESTAMP DEFAULT NOW()
 );
 
 DROP TABLE IF EXISTS config_map;
@@ -422,9 +425,9 @@ CREATE TABLE config_map (
     vault_key_id VARCHAR(255), -- ID of the encryption key (nullable)
     vault_id VARCHAR(36) REFERENCES vault (id), -- Reference to encryption key provider
     owner_id VARCHAR(36), -- Optional: ownership for multi-tenancy
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP -- Optional: soft delete support
+    created_date TIMESTAMP DEFAULT NOW(),
+    updated_date TIMESTAMP DEFAULT NOW(),
+    deleted_date TIMESTAMP -- Optional: soft delete support
 );
 
 -- Index for JSONB data to optimize queries

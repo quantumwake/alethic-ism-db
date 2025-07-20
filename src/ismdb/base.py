@@ -17,6 +17,9 @@ class SQLNull:
     """Marker class for explicit SQL NULL checks."""
     pass
 
+class SQLNotNull:
+    """Marker class for explicit SQL NOT NULL checks."""
+    pass
 
 class Condition:
     def __init__(self, operator: str, value: Any):
@@ -103,7 +106,7 @@ class BaseDatabaseAccess:
         finally:
             self.release_connection(conn)
 
-    def execute_update(self, table: str, update_values: dict, conditions: dict) -> int:
+    def execute_update(self, table: str, update_values: dict, conditions: dict) -> int | None:
         conn = self.create_connection()
         set_clauses = []
         where_clauses = []
@@ -308,6 +311,8 @@ class BaseDatabaseAccess:
             if value is not None:
                 if value is SQLNull:
                     where_clauses.append(f"{field} IS NULL")
+                elif value is SQLNotNull:
+                    where_clauses.append(f"{field} IS NOT NULL")
                 else:
                     where_clauses.append(f"{field} = %s")
                     params.append(value)
