@@ -155,7 +155,8 @@ INSERT INTO processor_class VALUES
     ('SignalProcessing'),
     ('MachineLearning'),
     ('DatabaseProcessing'),
-    ('Interaction')
+    ('Interaction'),
+    ('Proprietary')
     ON CONFLICT DO NOTHING;
 
 COMMIT;

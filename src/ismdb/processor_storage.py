@@ -2,6 +2,7 @@ import uuid
 import logging as log
 from typing import Optional, List
 
+from psycopg2.extras import Json
 from ismcore.model.base_model import Processor, ProcessorStatusCode, ProcessorProperty
 from ismcore.storage.processor_state_storage import ProcessorStorage
 
@@ -66,7 +67,7 @@ class ProcessorDatabaseStorage(ProcessorStorage, BaseDatabaseAccessSinglePool):
                     processor.provider_id,
                     processor.project_id,
                     processor.name,
-                    processor.properties,
+                    Json(processor.properties) if processor.properties else None,
                     processor.status.value
                 ])
 
