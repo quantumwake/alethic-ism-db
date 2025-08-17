@@ -333,7 +333,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
                     # incrementally adding data in batches, instead of iterating the entire set again
                     if incremental:
-                        data_count = state.data[column].count
+                        data_count = len(state.data[column].values)
                         offset = state.persisted_position + 1
                         batch_size = 5000
 
