@@ -1,4 +1,4 @@
-alethic-ism-core
+alethic-ism-core==1.0.23.dev0
 nats-py
 pyyaml
 psycopg2
