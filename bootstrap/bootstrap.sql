@@ -164,9 +164,9 @@ COMMIT;
 DROP TABLE IF EXISTS processor_provider cascade;
 CREATE TABLE processor_provider (
     id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    version VARCHAR(32) NOT NULL,
-    class_name VARCHAR(32) NOT NULL REFERENCES processor_class (class_name),
+    name VARCHAR(512) NOT NULL,
+    version VARCHAR(256) NOT NULL,
+    class_name VARCHAR(256) NOT NULL REFERENCES processor_class (class_name),
     user_id varchar(36) NULL REFERENCES user_profile (user_id),
     project_id VARCHAR(36) NULL REFERENCES user_project (project_id)
 );
@@ -175,37 +175,140 @@ alter table processor_provider add column route jsonb null;
 alter table processor_provider add column created_date timestamp not null default current_timestamp;
 alter table processor_provider add column updated_date timestamp null default null;
 
+
 INSERT INTO processor_provider (id, name, version, class_name) VALUES
+ --- gpt 4o
     ('language/models/openai/gpt-4o', 'OpenAI', 'gpt-4o', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-mini', 'OpenAI', 'gpt-4o-mini', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-05-13', 'OpenAI', 'gpt-4o-2024-05-13', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-08-06', 'OpenAI', 'gpt-4o-2024-08-06', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-2024-11-20', 'OpenAI', 'gpt-4o-2024-11-20', 'NaturalLanguageProcessing'),
     ('language/models/openai/gpt-4o-latest', 'OpenAI', 'chatgpt-4o-latest', 'NaturalLanguageProcessing'),
+
+ --- gpt 4.1
+    ('language/models/openai/gpt-4.1', 'OpenAI', 'gpt-4.1', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-4.1-mini', 'OpenAI', 'gpt-4.1-mini', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-4.1-nano', 'OpenAI', 'gpt-4.1-nano', 'NaturalLanguageProcessing'),
+
+
+--- gpt 5
+    ('language/models/openai/gpt-5', 'OpenAI', 'gpt-5', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-5-chat-latest', 'OpenAI', 'gpt-5-chat-latest', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-5-mini', 'OpenAI', 'gpt-5-mini', 'NaturalLanguageProcessing'),
+    ('language/models/openai/gpt-5-nano', 'OpenAI', 'gpt-5-nano', 'NaturalLanguageProcessing'),
+
+--- other openai
     ('language/models/openai/o1-preview', 'OpenAI', 'o1-preview', 'NaturalLanguageProcessing'),
     ('image/models/openai/dall-e-2', 'OpenAI', 'dall-e-2', 'ImageProcessing'),
     ('image/models/openai/dall-e-3', 'OpenAI', 'dall-e-3', 'ImageProcessing'),
+
+-- openrouter
+    ('language/models/openrouter/openai/gpt-4.1', 'OpenRouter', 'openai/gpt-4.1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-4.1-mini', 'OpenRouter', 'openai/gpt-4.1-mini', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-4.1-nano', 'OpenRouter', 'openai/gpt-4.1-nano', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-4', 'OpenRouter', 'openai/gpt-4', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-4o', 'OpenRouter', 'openai/gpt-4o', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-4-turbo', 'OpenRouter', 'openai/gpt-4-turbo', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/openai/gpt-5', 'OpenRouter', 'openai/gpt-5', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-5-mini', 'OpenRouter', 'openai/gpt-5-mini', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-5-codex', 'OpenRouter', 'openai/gpt-5-codex', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-5-chat', 'OpenRouter', 'openai/gpt-5-chat', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/openai/gpt-5-nano', 'OpenRouter', 'openai/gpt-5-nano', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/google/gemini-2.5-flash', 'OpenRouter', 'google/gemini-2.5-flash', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/google/gemini-2.5-pro', 'OpenRouter', 'google/gemini-2.5-pro', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/google/gemini-2.5-flash-lite', 'OpenRouter', 'google/gemini-2.5-flash-lite', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/google/gemini-pro-1.5', 'OpenRouter', 'google/gemini-pro-1.5', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/x-ai/grok-4', 'OpenRouter', 'x-ai/grok-4', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/x-ai/grok-4-fast', 'OpenRouter', 'x-ai/grok-4-fast', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/x-ai/grok-3', 'OpenRouter', 'x-ai/grok-3', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/x-ai/grok-3-mini', 'OpenRouter', 'x-ai/grok-3-mini', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/x-ai/grok-2', 'OpenRouter', 'x-ai/grok-2', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/x-ai/grok-2-mini', 'OpenRouter', 'x-ai/grok-2-mini', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/moonshotai/kimi-k2', 'OpenRouter', 'moonshotai/kimi-k2', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-3-opus', 'OpenRouter', 'anthropic/claude-3-opus', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-opus-4', 'OpenRouter', 'anthropic/claude-opus-4', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-opus-4.1', 'OpenRouter', 'anthropic/claude-opus-4.1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-sonnet-4.5', 'OpenRouter', 'anthropic/claude-sonnet-4.5', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-sonnet-4', 'OpenRouter', 'anthropic/claude-sonnet-4', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/anthropic/claude-3-sonnet', 'OpenRouter', 'anthropic/claude-3-sonnet', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-3.5-sonnet', 'OpenRouter', 'anthropic/claude-3.5-sonnet', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-3.7-sonnet', 'OpenRouter', 'anthropic/claude-3.7-sonnet', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/anthropic/claude-3.7-sonnet:thinking', 'OpenRouter', 'anthropic/claude-3.7-sonnet:thinking', 'NaturalLanguageProcessing'),
+
+
+
+    ('language/models/openrouter/mistralai/mistral-nemo', 'OpenRouter', 'mistralai/mistral-nemo', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-tiny', 'OpenRouter', 'mistralai/mistral-tiny', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-small-3.2-24b-instruct', 'OpenRouter', 'mistralai/mistral-small-3.2-24b-instruct', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-small', 'OpenRouter', 'mistralai/mistral-small', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-medium-3.1', 'OpenRouter', 'mistralai/mistral-medium-3.1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-large', 'OpenRouter', 'mistralai/mistral-large', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/mistral-large-2411', 'OpenRouter', 'mistralai/mistral-large-2411', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/mistralai/magistral-small-2506', 'OpenRouter', 'mistralai/magistral-small-2506', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/magistral-medium-2506', 'OpenRouter', 'mistralai/magistral-medium-2506', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mistralai/magistral-medium-2506:thinking', 'OpenRouter', 'mistralai/magistral-medium-2506:thinking', 'NaturalLanguageProcessing'),
+
+
+    ('language/models/openrouter/deepseek/deepseek-r1', 'OpenRouter', 'deepseek/deepseek-r1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/deepseek/deepseek-r1-distill-llama-70b', 'OpenRouter', 'deepseek/deepseek-r1-distill-llama-70b', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/mdeepseek/deepseek-r1-0528-qwen3-8b', 'OpenRouter', 'deepseek/deepseek-r1-0528-qwen3-8b', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/deepseek/deepseek-r1-distill-qwen-32b', 'OpenRouter', 'deepseek/deepseek-r1-distill-qwen-32b', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/deepseek/deepseek-chat-v3.1', 'OpenRouter', 'deepseek/deepseek-chat-v3.1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/deepseek/deepseek-v3.1-terminus', 'OpenRouter', 'deepseek/deepseek-v3.1-terminus', 'NaturalLanguageProcessing'),
+
+    ('language/models/openrouter/meta-llama/llama-4-scout', 'OpenRouter', 'meta-llama/llama-4-scout', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/meta-llama/llama-4-maverick', 'OpenRouter', 'meta-llama/llama-4-maverick', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/meta-llama/llama-3.1-405b-instruct', 'OpenRouter', 'meta-llama/llama-3.1-405b-instruct', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/nvidia/llama-3.3-nemotron-super-49b-v1', 'OpenRouter', 'nvidia/llama-3.3-nemotron-super-49b-v1', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/meta-llama/codellama-34b-instruct', 'OpenRouter', 'meta-llama/codellama-34b-instruct', 'NaturalLanguageProcessing'),
+    ('language/models/openrouter/meta-llama/llama-guard-4-12b', 'OpenRouter', 'meta-llama/llama-guard-4-12b', 'NaturalLanguageProcessing'),
+
+-- others
     ('language/models/llama/llama3.1-8b', 'LLama', 'llama3.1-8b', 'NaturalLanguageProcessing'),
     ('language/models/llama/llama3.1-705b', 'LLama', 'llama3.1-70b', 'NaturalLanguageProcessing'),
     ('language/models/llama/llama3.1-405b', 'LLama', 'llama3.1-405b', 'NaturalLanguageProcessing'),
     ('language/models/google/gemini-1.5-flash', 'Google', 'gemini-1.5-flash', 'NaturalLanguageProcessing'),
     ('language/models/google/gemini-1.5-pro-001', 'Google', 'gemini-1.5-pro-001', 'NaturalLanguageProcessing'),
+
+-- anthropic
     ('language/models/anthropic/claude-2.0', 'Anthropic', 'claude-2', 'NaturalLanguageProcessing'),
     ('language/models/anthropic/claude-2.1', 'Anthropic', 'claude-2.1', 'NaturalLanguageProcessing'),
-    ('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),
-    ('language/models/anthropic/claude-3-5-sonnet-latest', 'Anthropic', 'claude-3-5-sonnet-latest', 'NaturalLanguageProcessing'),
-    ('language/models/anthropic/claude-3-5-haiku-latest', 'Anthropic', 'claude-3-5-haiku-latest', 'NaturalLanguageProcessing'),
+
     ('language/models/anthropic/claude-3-opus-latest', 'Anthropic', 'claude-3-opus-latest', 'NaturalLanguageProcessing'),
+    ('language/models/anthropic/claude-3-opus-20240229', 'Anthropic', 'claude-3-opus-20240229', 'NaturalLanguageProcessing'),
+    ('language/models/anthropic/claude-4.0-opus-latest', 'Anthropic', 'claude-opus-4-0', 'NaturalLanguageProcessing'),
+    ('language/models/anthropic/claude-4.1-opus-latest', 'Anthropic', 'claude-opus-4-1', 'NaturalLanguageProcessing'),
+
+    ('language/models/anthropic/claude-3-5-sonnet-latest', 'Anthropic', 'claude-3-5-sonnet-latest', 'NaturalLanguageProcessing'),
     ('language/models/anthropic/claude-3-5-sonnet-20240620', 'Anthropic', 'claude-3-5-sonnet-20240620', 'NaturalLanguageProcessing'),
     ('language/models/anthropic/claude-3-5-sonnet-20241022', 'Anthropic', 'claude-3-5-sonnet-20241022', 'NaturalLanguageProcessing'),
+    ('language/models/anthropic/claude-3-7-sonnet-latest', 'Anthropic', 'claude-3-7-sonnet-latest', 'NaturalLanguageProcessing'),
+    ('language/models/anthropic/claude-4.0-sonnet-latest', 'Anthropic', 'claude-sonnet-4-0', 'NaturalLanguageProcessing'),
+
+    ('language/models/anthropic/claude-3-5-haiku-latest', 'Anthropic', 'claude-3-5-haiku-latest', 'NaturalLanguageProcessing'),
     ('language/models/anthropic/claude-3-5-haiku-20241022', 'Anthropic', 'claude-3-5-haiku-20241022', 'NaturalLanguageProcessing'),
+
+    -- mixers
     ('data/transformers/mixer/state-online-join-1.0', 'State Online Join', 'state-online-join-1.0', 'DataTransformation'),
     ('data/transformers/mixer/state-online-merge-1.0', 'State Online Merge', 'state-online-merge-1.0', 'DataTransformation'),
     ('data/transformers/mixer/state-online-cross-join-1.0', 'State Online Cross Join', 'state-online-cross-join-1.0', 'DataTransformation'),
+    ('data/transformers/mixer/state-tables-1.0', 'State Tables', 'state-tables-1.0', 'DataTransformation'),
     ('data/transformers/sampler/state-sample-multiplier-1.0', 'State Sample Multiplier', 'state-sample-multiplier-1.0', 'DataTransformation'),
+
+    -- data source
     ('data/source/sql-1.0', 'SQL', 'sql-1.0', 'DatabaseProcessing'),
+
+    -- code executors
     ('code/executor/python/python-executor-1.0', 'Python Executor', 'python-executor-1.0', 'CodeProcessing'),
     ('code/executor/mako/mako-executor-1.0', 'Mako Executor', 'mako-executor-1.0', 'CodeProcessing'),
+
+    --- user interactions
     ('interaction/user/user-interaction', 'User Interaction', 'user-interaction-1.0', 'Interaction')
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
