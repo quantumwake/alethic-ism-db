@@ -794,6 +794,162 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         return state
 
+    # load state metadata without loading actual data arrays (memory efficient)
+    def load_state_metadata(self, state_id: str):
+        """
+        Load state metadata only, without loading actual column data.
+        This is memory-efficient for incremental updates where you don't need existing data.
+
+        Returns State with:
+        - Basic metadata (id, project_id, state_type, count)
+        - Configuration
+        - Column definitions
+        - Empty data arrays
+        - persisted_position set correctly
+        """
+        # basic state instance
+        state = self.load_state_basic(state_id=state_id)
+
+        if not state:
+            return None
+
+        # load column definitions but NOT the actual data
+        state.columns = self.load_state_columns(state_id=state_id)
+        state.data = {}  # Empty - no data loaded
+        state.mapping = {}  # Empty - no mappings loaded
+        state.persisted_position = state.count - 1
+
+        return state
+
+    # append data directly without loading existing data (memory efficient)
+    def append_state_data_direct(self, state_id: str, query_states: List[Dict],
+                                scope_variable_mappings: dict = None, batch_size: int = 5000):
+        """
+        Append new rows directly to the database without loading existing data.
+        This is memory-efficient for incremental updates.
+
+        Args:
+            state_id: The state ID to append data to
+            query_states: List of dictionaries containing the new rows to append (raw, will be transformed)
+            scope_variable_mappings: Variables for evaluating callable columns in transformations
+            batch_size: Number of rows to insert per batch (default 5000)
+
+        Returns:
+            Updated state metadata (count and persisted_position updated)
+        """
+        if not query_states:
+            logging.warning(f'no query states provided for state_id: {state_id}')
+            return None
+
+        # Load only metadata (no data arrays)
+        state = self.load_state_metadata(state_id=state_id)
+
+        if not state:
+            logging.error(f'state not found: {state_id}')
+            return None
+
+        # Transform query_states using state transformations (callable columns, primary keys, etc.)
+        # but don't store in arrays (skip_data_append=True)
+        transformed_query_states = []
+        for entry in query_states:
+            transformed = state.apply_query_state(
+                query_state=entry,
+                skip_data_append=True,  # Skip appending to in-memory arrays
+                scope_variable_mappings=scope_variable_mappings or {}
+            )
+            transformed_query_states.append(transformed)
+
+        # Use the transformed data for insertion
+        query_states = transformed_query_states
+
+        # Get column definitions from database
+        columns = self.fetch_state_columns(state_id)
+        if not columns:
+            logging.error(f'no columns found for state_id: {state_id}')
+            return None
+
+        conn = self.create_connection()
+        try:
+            track_mapping_set = set()
+
+            # Calculate starting position for new data
+            start_position = state.persisted_position + 1
+
+            with conn.cursor() as cursor:
+                # Process each column separately with batched inserts
+                for column_name, column_def in columns.items():
+                    column_id = column_def.id
+
+                    # Build batch of (column_id, data_index, value) for this column across all rows
+                    column_batch = []
+                    for row_offset, query_state in enumerate(query_states):
+                        data_index = start_position + row_offset
+                        column_value = query_state.get(column_name, None)
+
+                        # Track state_key for mappings
+                        if column_name == 'state_key' and column_value:
+                            track_mapping_set.add(column_value)
+
+                        column_batch.append([column_id, data_index, column_value])
+
+                    # Batch insert all rows for this column
+                    if column_batch:
+                        cursor.executemany(
+                            "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
+                            column_batch
+                        )
+
+                # Batch insert state mappings
+                if track_mapping_set:
+                    mapping_batch = []
+                    for row_offset, query_state in enumerate(query_states):
+                        if 'state_key' in query_state and query_state['state_key']:
+                            state_key = query_state['state_key']
+                            data_index = start_position + row_offset
+                            mapping_batch.append([state_id, state_key, data_index])
+
+                    if mapping_batch:
+                        for mapping in mapping_batch:
+                            cursor.execute(
+                                """
+                                MERGE INTO state_column_data_mapping AS target
+                                USING (SELECT %s AS state_id, %s AS state_key, %s AS data_index) AS source
+                                   ON target.state_id = source.state_id
+                                  AND target.state_key = source.state_key
+                                  AND target.data_index = source.data_index
+                                WHEN NOT MATCHED THEN
+                                    INSERT (state_id, state_key, data_index)
+                                    VALUES (source.state_id, source.state_key, source.data_index)
+                                """,
+                                mapping
+                            )
+
+                # Update state count and persisted_position
+                new_count = state.count + len(query_states)
+                new_persisted_position = new_count - 1
+
+                cursor.execute(
+                    "UPDATE state SET count = %s WHERE id = %s",
+                    [new_count, state_id]
+                )
+
+            conn.commit()
+
+            # Update state object
+            state.count = new_count
+            state.persisted_position = new_persisted_position
+
+            logging.info(f'appended {len(query_states)} rows to state {state_id}, new count: {new_count}')
+
+            return state
+
+        except Exception as e:
+            logging.error(f'error appending data to state {state_id}: {e}')
+            conn.rollback()
+            raise e
+        finally:
+            self.release_connection(conn)
+
     # delete cascade the state and all its details
     def delete_state_cascade(self, state_id):
         self.delete_state_data(state_id=state_id)

@@ -331,7 +331,7 @@ create table processor (
 );
 
 alter table processor add column properties jsonb null;
-alter table processor add column name null;
+alter table processor add column name varchar(255) null;
 alter table processor add column created_date timestamp not null default current_timestamp;
 alter table processor add column updated_date timestamp null default null;
 
