@@ -850,6 +850,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         # Transform query_states using state transformations (callable columns, primary keys, etc.)
         # but don't store in arrays (skip_data_append=True)
+        # This will also create columns dynamically if they don't exist yet
         transformed_query_states = []
         for entry in query_states:
             transformed = state.apply_query_state(
@@ -862,20 +863,29 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         # Use the transformed data for insertion
         query_states = transformed_query_states
 
-        # Get column definitions from database
-        columns = self.fetch_state_columns(state_id)
+        # After transformations, state.columns should be populated (either from DB or dynamically created)
+        columns = state.columns
         if not columns:
-            logging.error(f'no columns found for state_id: {state_id}')
+            logging.error(f'no columns found for state_id: {state_id} even after applying query_states')
             return None
+
+        # Save the column definitions to database if this is a new state
+        if columns:
+            self.insert_state_columns(state=state, force_update=False)
 
         conn = self.create_connection()
         try:
+            # Begin explicit transaction
+            conn.autocommit = False
+
             track_mapping_set = set()
 
             # Calculate starting position for new data
             start_position = state.persisted_position + 1
 
             with conn.cursor() as cursor:
+                # Start transaction explicitly
+                cursor.execute("BEGIN")
                 # Process each column separately with batched inserts
                 for column_name, column_def in columns.items():
                     column_id = column_def.id
@@ -892,10 +902,16 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
                         column_batch.append([column_id, data_index, column_value])
 
-                    # Batch insert all rows for this column
+                    # Batch insert all rows for this column with ON CONFLICT handling
+                    # ON CONFLICT works with executemany in psycopg2
                     if column_batch:
                         cursor.executemany(
-                            "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
+                            """
+                            INSERT INTO state_column_data (column_id, data_index, data_value)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (column_id, data_index)
+                            DO UPDATE SET data_value = EXCLUDED.data_value
+                            """,
                             column_batch
                         )
 

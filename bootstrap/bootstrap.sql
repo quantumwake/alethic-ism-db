@@ -576,6 +576,17 @@ create index monitor_log_event_user_id on monitor_log_event (user_id);
 create index monitor_log_event_project_id on monitor_log_event (project_id);
 create index monitor_log_event_user_and_project_id on monitor_log_event (user_id, project_id);
 
+-- CREATE UNIQUE INDEX
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+create unique index if not exists state_column_data_comp_ux
+    on public.state_column_data (column_id, data_index);
+create index state_column_data_column_idx
+    on public.state_column_data (column_id);
+create index state_column_data_trgm_idx
+    on public.state_column_data using gin (data_value public.gin_trgm_ops);
+
+
 -- Create ENUM type for action_type
 CREATE TYPE action_type_enum AS ENUM ('slider', 'text', 'yes/no', 'dropdown');
 
