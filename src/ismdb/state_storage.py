@@ -26,7 +26,7 @@ logging = log.getLogger(__name__)
 
 class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
-    def fetch_state_data_by_column_id(self, column_id: int, offset: int | None = None, limit: int = 1000) -> Optional[StateDataRowColumnData]:
+    def fetch_state_data_by_column_id(self, column_id: int, state_count: int, offset: int | None = None, limit: int = 1000) -> Optional[StateDataRowColumnData]:
         conn = self.create_connection()
 
         try:
@@ -39,10 +39,19 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     cursor.execute(sql, [column_id, offset, offset + limit])
 
                 rows = cursor.fetchall()
-                values = [row[2] for row in rows]
+                # Sparse-to-dense conversion: use data_index to place values correctly
+                if rows:
+                    values = [None] * state_count  # Initialize with None for all rows
+                    for row in rows:
+                        data_index = row[1]  # Actual row position
+                        data_value = row[2]  # The value
+                        values[data_index] = data_value
+                else:
+                    values = [None] * state_count  # Empty column still needs full size
+
                 data = StateDataRowColumnData(
                     values=values,
-                    count=len(values)
+                    count=state_count
                 )
 
             return data
@@ -763,12 +772,12 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         return self.fetch_state_columns(state_id=state_id)
 
     # load the state data by columns, with offset and limit if applied
-    def load_state_data(self, columns: Dict[str, StateDataColumnDefinition], offset: int | None = None, limit: int = 1000) \
+    def load_state_data(self, columns: Dict[str, StateDataColumnDefinition], state_count: int, offset: int | None = None, limit: int = 1000) \
             -> Optional[Dict[str, StateDataRowColumnData]]:
 
         # rebuild the data values by column and values
         return {
-            column: self.fetch_state_data_by_column_id(column_definition.id, offset=offset, limit=limit)
+            column: self.fetch_state_data_by_column_id(column_definition.id, state_count, offset=offset, limit=limit)
             for column, column_definition in columns.items()
             # if not column_definition.value  # TODO REMOVE since we now store all constant and expression values in .data[col].values[]  ...old: only return row data that is not a function or a constant
         }
@@ -780,6 +789,14 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
     # load the state and all its details
     def load_state(self, state_id: str, load_data: bool = True, offset: int | None = None, limit: int = 1000):
+        # Deprecation warning - only for full data loads (no pagination)
+        if load_data and offset is None:
+            logging.warning(
+                f"Loading full state data is DEPRECATED for state_id: {state_id}. "
+                "Use load_state_metadata() and lightweight mode instead. "
+                "Full data loading will be removed in a future version."
+            )
+
         # basic state instance
         state = self.load_state_basic(state_id=state_id)
 
@@ -788,7 +805,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         # load additional details about the state
         state.columns = self.load_state_columns(state_id=state_id)
-        state.data = self.load_state_data(columns=state.columns, offset=offset, limit=limit) if load_data else {}
+        state.data = self.load_state_data(columns=state.columns, state_count=state.count, offset=offset, limit=limit) if load_data else {}
         state.mapping = self.load_state_data_mappings(state_id=state_id) if load_data else {}
         state.persisted_position = state.count - 1
 
