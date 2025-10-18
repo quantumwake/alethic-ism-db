@@ -849,6 +849,45 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         return state
 
+    def fetch_state_data_chunk_for_export(self, state_id: str, offset: int, limit: int):
+        """
+        Fetch a chunk of state data directly from the database for export purposes.
+        Returns rows in the format: (column_name, data_index, data_value)
+
+        This method is optimized for streaming large datasets without loading
+        everything into memory at once.
+
+        :param state_id: The ID of the state to export
+        :param offset: Starting row index for this chunk
+        :param limit: Maximum number of rows to fetch
+        :return: List of tuples (column_name, data_index, data_value)
+        """
+        conn = self.create_connection()
+
+        try:
+            with conn.cursor() as cursor:
+                # Query chunk using the state_column view
+                sql = """
+                    SELECT sc.name, sd.data_index, sd.data_value
+                    FROM state_column sc
+                    LEFT JOIN state_column_data sd ON sc.id = sd.column_id
+                    WHERE sc.state_id = %s
+                      AND sd.data_index >= %s
+                      AND sd.data_index < %s
+                    ORDER BY sd.data_index, sc.name
+                """
+                cursor.execute(sql, [state_id, offset, offset + limit])
+
+                # Fetch all rows for this chunk
+                rows = cursor.fetchall()
+                return rows
+
+        except Exception as e:
+            logging.error(f"Error fetching state data chunk: {e}")
+            raise e
+        finally:
+            self.release_connection(conn)
+
     # append data directly without loading existing data (memory efficient)
     def append_state_data_direct(self, state_id: str, query_states: List[Dict],
                                 scope_variable_mappings: dict = None, batch_size: int = 5000):
