@@ -41,13 +41,24 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                 rows = cursor.fetchall()
                 # Sparse-to-dense conversion: use data_index to place values correctly
                 if rows:
-                    values = [None] * state_count  # Initialize with None for all rows
+                    # When paginating, create array sized for the page, not full state_count
+                    array_size = limit if offset is not None else state_count
+                    values = [None] * array_size  # Initialize with None for all rows
                     for row in rows:
                         data_index = row[1]  # Actual row position
                         data_value = row[2]  # The value
-                        values[data_index] = data_value
+                        # Adjust index by offset when paginating
+                        adjusted_index = data_index - offset if offset is not None else data_index
+                        values[adjusted_index] = data_value
                 else:
-                    values = [None] * state_count  # Empty column still needs full size
+                    array_size = limit if offset is not None else state_count
+                    values = [None] * array_size  # Empty column still needs full size
+
+                # Truncate from bottom if we exceed state_count boundaries (in-place deletion)
+                if offset is not None:
+                    max_rows_available = state_count - offset
+                    if len(values) > max_rows_available:
+                        del values[max_rows_available:]
 
                 data = StateDataRowColumnData(
                     values=values,
