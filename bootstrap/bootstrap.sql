@@ -445,25 +445,279 @@ create table if not exists usage
 create index usage_project_idx on usage (project_id);
 create index user_project_user_id_idx on user_project (user_id);
 
+--------------------------------------------------
 -- USAGE VIEW FOR USAGE TABLE (extracts year, month, day, hour, minute, second from transaction_time)
-CREATE OR REPLACE VIEW usage_v
-AS
+--------------------------------------------------
+
+-- ===========================
+-- CLEANUP OLD DEFINITIONS
+-- ===========================
+
+-- Drop old triggers, functions, and table
+DROP TRIGGER IF EXISTS trg_usage_rollup_ins ON usage;
+DROP TRIGGER IF EXISTS trg_usage_rollup_upd ON usage;
+DROP TRIGGER IF EXISTS trg_usage_rollup_del ON usage;
+
+DROP FUNCTION IF EXISTS usage_rollup_trg() CASCADE;
+DROP FUNCTION IF EXISTS _usage_rollup_apply(
+    timestamptz, varchar, varchar, varchar, varchar,
+    usage_unit_type, usage_unit_subtype, integer
+) CASCADE;
+
+DROP TABLE IF EXISTS usage_minute_rollup CASCADE;
+
+-- ===========================
+-- RECREATE FRESH DEFINITIONS
+-- ===========================
+CREATE TABLE usage_minute_rollup (
+    bucket_utc     timestamptz       NOT NULL,
+    user_id        varchar(36)       NOT NULL,
+    project_id     varchar(36)       NOT NULL,
+    resource_id    varchar(255)      NOT NULL,
+    resource_type  varchar(255)      NOT NULL,
+    unit_type      usage_unit_type   NOT NULL,
+    unit_subtype   usage_unit_subtype NOT NULL,
+    unit_count     integer           NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket_utc, user_id, project_id, resource_id, resource_type, unit_type, unit_subtype)
+);
+
+CREATE INDEX usage_minute_rollup_proj_time ON usage_minute_rollup (project_id, bucket_utc);
+CREATE INDEX usage_minute_rollup_user_time ON usage_minute_rollup (user_id, bucket_utc);
+
+CREATE OR REPLACE FUNCTION _usage_rollup_apply(
+    p_bucket     timestamptz,
+    p_user       varchar(36),
+    p_proj       varchar(36),
+    p_res        varchar(255),
+    p_rtype      varchar(255),
+    p_utype      usage_unit_type,
+    p_usubtype   usage_unit_subtype,
+    p_delta      integer
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO usage_minute_rollup
+        (bucket_utc, user_id, project_id, resource_id,
+         resource_type, unit_type, unit_subtype, unit_count)
+    VALUES
+        (p_bucket, p_user, p_proj, p_res,
+         p_rtype, p_utype, p_usubtype, p_delta)
+    ON CONFLICT (bucket_utc, user_id, project_id, resource_id, resource_type, unit_type, unit_subtype)
+    DO UPDATE SET unit_count = usage_minute_rollup.unit_count + EXCLUDED.unit_count;
+END$$;
+
+
+CREATE OR REPLACE FUNCTION usage_rollup_trg()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    v_old integer := 0;
+    v_new integer := 0;
+    v_delta integer := 0;
+    v_bucket timestamptz;
+    v_user varchar(36);
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        v_new := COALESCE(NEW.unit_count, 0);
+        v_delta := v_new;
+        v_bucket := date_trunc('minute', NEW.transaction_time AT TIME ZONE 'UTC');
+        SELECT up.user_id INTO v_user FROM user_project up WHERE up.project_id = NEW.project_id;
+        PERFORM _usage_rollup_apply(
+            v_bucket, v_user, NEW.project_id, NEW.resource_id,
+            NEW.resource_type, NEW.unit_type, NEW.unit_subtype, v_delta);
+        RETURN NEW;
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_old := COALESCE(OLD.unit_count, 0);
+        v_new := COALESCE(NEW.unit_count, 0);
+
+        IF date_trunc('minute', OLD.transaction_time AT TIME ZONE 'UTC')
+             <> date_trunc('minute', NEW.transaction_time AT TIME ZONE 'UTC')
+           OR OLD.project_id     <> NEW.project_id
+           OR OLD.resource_id    <> NEW.resource_id
+           OR OLD.resource_type  <> NEW.resource_type
+           OR OLD.unit_type      <> NEW.unit_type
+           OR OLD.unit_subtype   <> NEW.unit_subtype THEN
+
+            v_bucket := date_trunc('minute', OLD.transaction_time AT TIME ZONE 'UTC');
+            SELECT up.user_id INTO v_user FROM user_project up WHERE up.project_id = OLD.project_id;
+            PERFORM _usage_rollup_apply(
+                v_bucket, v_user, OLD.project_id, OLD.resource_id,
+                OLD.resource_type, OLD.unit_type, OLD.unit_subtype, -v_old);
+
+            v_bucket := date_trunc('minute', NEW.transaction_time AT TIME ZONE 'UTC');
+            SELECT up.user_id INTO v_user FROM user_project up WHERE up.project_id = NEW.project_id;
+            PERFORM _usage_rollup_apply(
+                v_bucket, v_user, NEW.project_id, NEW.resource_id,
+                NEW.resource_type, NEW.unit_type, NEW.unit_subtype, v_new);
+        ELSE
+            v_delta := v_new - v_old;
+            v_bucket := date_trunc('minute', NEW.transaction_time AT TIME ZONE 'UTC');
+            SELECT up.user_id INTO v_user FROM user_project up WHERE up.project_id = NEW.project_id;
+            PERFORM _usage_rollup_apply(
+                v_bucket, v_user, NEW.project_id, NEW.resource_id,
+                NEW.resource_type, NEW.unit_type, NEW.unit_subtype, v_delta);
+        END IF;
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        v_old := COALESCE(OLD.unit_count, 0);
+        v_bucket := date_trunc('minute', OLD.transaction_time AT TIME ZONE 'UTC');
+        SELECT up.user_id INTO v_user FROM user_project up WHERE up.project_id = OLD.project_id;
+        PERFORM _usage_rollup_apply(
+            v_bucket, v_user, OLD.project_id, OLD.resource_id,
+            OLD.resource_type, OLD.unit_type, OLD.unit_subtype, -v_old);
+        RETURN OLD;
+    END IF;
+END$$;
+
+CREATE TRIGGER trg_usage_rollup_ins AFTER INSERT ON usage FOR EACH ROW EXECUTE FUNCTION usage_rollup_trg();
+CREATE TRIGGER trg_usage_rollup_upd AFTER UPDATE ON usage FOR EACH ROW EXECUTE FUNCTION usage_rollup_trg();
+CREATE TRIGGER trg_usage_rollup_del AFTER DELETE ON usage FOR EACH ROW EXECUTE FUNCTION usage_rollup_trg();
+
+CREATE INDEX IF NOT EXISTS usage_proj_time_idx ON usage (project_id, transaction_time);
+CREATE INDEX IF NOT EXISTS usage_minute_rollup_user_idx ON usage_minute_rollup (user_id);
+CREATE INDEX IF NOT EXISTS usage_minute_rollup_proj_idx ON usage_minute_rollup (project_id);
+CREATE INDEX IF NOT EXISTS usage_minute_rollup_user_idx ON usage_minute_rollup (user_id);
+
+-- (optional) Backfill existing usage data into usage_minute_rollup
+-- BEGIN;
+-- WITH src AS (
+--   SELECT
+--     date_trunc('minute', u.transaction_time AT TIME ZONE 'UTC') AS bucket_utc,
+--     up.user_id,
+--     u.project_id,
+--     u.resource_id,
+--     u.resource_type,
+--     u.unit_type,
+--     u.unit_subtype,
+--     SUM(u.unit_count)::int AS unit_count
+-- --   count(up.user_id) as cnt
+--   FROM usage u
+--   -- if user_project can have duplicate rows, DISTINCT it:
+--   JOIN (SELECT DISTINCT project_id, user_id FROM user_project) up
+--     ON up.project_id = u.project_id
+--   /* optional time window
+--   WHERE u.transaction_time >= :from_ts
+--     AND u.transaction_time <  :to_ts
+--   */
+--   GROUP BY 1,2,3,4,5,6,7
+-- )
+-- INSERT INTO usage_minute_rollup (
+--   bucket_utc, user_id, project_id, resource_id, resource_type, unit_type, unit_subtype, unit_count
+-- )
+-- SELECT * FROM src
+-- ON CONFLICT (bucket_utc, user_id, project_id, resource_id, resource_type, unit_type, unit_subtype)
+-- DO UPDATE SET unit_count = EXCLUDED.unit_count;
+-- COMMIT;
+
+-- Replace old view
+DROP VIEW IF EXISTS usage_v CASCADE;
+
+CREATE VIEW usage_v
+  (year, month, day, hour, minute, second,
+   user_id, project_id, resource_id, resource_type, unit_type, unit_subtype, unit_count) AS
 SELECT
-    extract(year from transaction_time) as year,
-    extract(month from transaction_time) as month,
-    extract(day from transaction_time) as day,
-    extract(hour from transaction_time) as hour,
-    extract(minute from transaction_time) as minute,
-    extract(second from transaction_time) as second,
-    up.user_id,
-    u.project_id,
-    u.resource_id,
-    u.resource_type,
-    u.unit_type,
-    COALESCE(u.unit_count, 0) as unit_count
- FROM usage u
-RIGHT OUTER JOIN user_project up
-  ON up.project_id = u.project_id;
+  EXTRACT(YEAR   FROM (bucket_utc AT TIME ZONE 'UTC'))    AS year,
+  EXTRACT(MONTH  FROM (bucket_utc AT TIME ZONE 'UTC'))    AS month,
+  EXTRACT(DAY    FROM (bucket_utc AT TIME ZONE 'UTC'))    AS day,
+  EXTRACT(HOUR   FROM (bucket_utc AT TIME ZONE 'UTC'))    AS hour,
+  EXTRACT(MINUTE FROM (bucket_utc AT TIME ZONE 'UTC'))    AS minute,
+  EXTRACT(SECOND FROM (bucket_utc AT TIME ZONE 'UTC'))    AS second,  -- always 0
+  user_id,
+  project_id,
+  resource_id,
+  resource_type,
+  unit_type,
+  unit_subtype,
+  unit_count
+FROM usage_minute_rollup;
+
+ALTER TABLE usage_v OWNER TO ism_db_user;
+
+
+-- =========================
+-- 1) Calendar-style daily tokens (per resource)
+-- =========================
+DROP VIEW IF EXISTS usage_report_calendar_v CASCADE;
+CREATE OR REPLACE VIEW usage_report_calendar_v AS
+SELECT
+  user_id,
+  project_id,
+  EXTRACT(YEAR  FROM (bucket_utc AT TIME ZONE 'UTC'))::int  AS year,
+  EXTRACT(MONTH FROM (bucket_utc AT TIME ZONE 'UTC'))::int  AS month,
+  EXTRACT(DAY   FROM (bucket_utc AT TIME ZONE 'UTC'))::int  AS day,
+  resource_type,
+  SUM(unit_count)::bigint                                   AS tokens
+FROM usage_minute_rollup
+GROUP BY user_id, project_id, year, month, day, resource_type;
+
+ALTER TABLE usage_report_calendar_v OWNER TO ism_db_user;
+
+-- =========================
+-- 2) Daily aggregates with stats (unchanged source, just explicit)
+-- =========================
+DROP VIEW IF EXISTS usage_report_daily_v CASCADE;
+CREATE OR REPLACE VIEW usage_report_daily_v AS
+SELECT
+  date_trunc('day', bucket_utc)         AS daily_utc,
+  user_id,
+  project_id,
+  resource_type,
+  unit_type,
+  unit_subtype,
+  SUM(unit_count)::bigint               AS sum_units,
+  ROUND(AVG(unit_count)::numeric, 2)    AS avg_units,
+  MIN(unit_count)                       AS min_units,
+  MAX(unit_count)                       AS max_units
+FROM usage_minute_rollup
+GROUP BY 1,2,3,4,5,6;
+
+ALTER TABLE usage_report_daily_v OWNER TO ism_db_user;
+
+-- =========================
+-- 3) Daily aggregates + pricing
+-- =========================
+DROP VIEW IF EXISTS usage_report_daily_pricing_v CASCADE;
+CREATE OR REPLACE VIEW usage_report_daily_pricing_v AS
+WITH pricing AS (
+  SELECT
+    u.*,
+    CASE
+      WHEN u.unit_subtype = 'OUTPUT' THEN p.output_price_per_1k_tokens
+      WHEN u.unit_subtype = 'INPUT'  THEN p.input_price_per_1k_tokens
+      ELSE NULL
+    END AS price_per_unit
+  FROM usage_report_daily_v u
+  LEFT JOIN processor_provider_pricing p
+    ON u.resource_type = p.processor_provider_id
+)
+SELECT
+  pricing.*,
+  (pricing.price_per_unit * pricing.sum_units) / 1000.0 AS cost
+FROM pricing;
+
+ALTER TABLE usage_report_daily_pricing_v OWNER TO ism_db_user;
+
+
+
+--
+-- CREATE OR REPLACE VIEW usage_v
+-- AS
+-- SELECT
+--     extract(year from transaction_time) as year,
+--     extract(month from transaction_time) as month,
+--     extract(day from transaction_time) as day,
+--     extract(hour from transaction_time) as hour,
+--     extract(minute from transaction_time) as minute,
+--     extract(second from transaction_time) as second,
+--     up.user_id,
+--     u.project_id,
+--     u.resource_id,
+--     u.resource_type,
+--     u.unit_type,
+--     COALESCE(u.unit_count, 0) as unit_count
+--  FROM usage u
+-- RIGHT OUTER JOIN user_project up
+--   ON up.project_id = u.project_id;
 
 
 -- audit logging table for various user functions
@@ -477,6 +731,9 @@ RIGHT OUTER JOIN user_project up
 --
 --
 
+------------------------------------------------------------------
+-- session and session messages for tracking user interactions
+------------------------------------------------------------------
 drop table if exists session cascade;
 create table session (
     session_id varchar(36) not null primary key,
