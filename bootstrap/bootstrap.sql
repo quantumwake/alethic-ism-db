@@ -4,7 +4,7 @@ create table user_profile (
   email character varying(255),
   created_date timestamp without time zone not null default CURRENT_TIMESTAMP,
   name character varying(255),
-  max_agentic_units integer
+  max_agentic_units bigint not null default 1000
 );
 
 -- create user profile credentials
@@ -631,9 +631,6 @@ SELECT
   unit_count
 FROM usage_minute_rollup;
 
-ALTER TABLE usage_v OWNER TO ism_db_user;
-
-
 -- =========================
 -- 1) Calendar-style daily tokens (per resource)
 -- =========================
@@ -649,8 +646,6 @@ SELECT
   SUM(unit_count)::bigint                                   AS tokens
 FROM usage_minute_rollup
 GROUP BY user_id, project_id, year, month, day, resource_type;
-
-ALTER TABLE usage_report_calendar_v OWNER TO ism_db_user;
 
 -- =========================
 -- 2) Daily aggregates with stats (unchanged source, just explicit)
@@ -671,7 +666,6 @@ SELECT
 FROM usage_minute_rollup
 GROUP BY 1,2,3,4,5,6;
 
-ALTER TABLE usage_report_daily_v OWNER TO ism_db_user;
 
 -- =========================
 -- 3) Daily aggregates + pricing
@@ -694,8 +688,6 @@ SELECT
   pricing.*,
   (pricing.price_per_unit * pricing.sum_units) / 1000.0 AS cost
 FROM pricing;
-
-ALTER TABLE usage_report_daily_pricing_v OWNER TO ism_db_user;
 
 
 

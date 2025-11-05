@@ -8,7 +8,9 @@ from ismcore.model.processor_state import State, StateConfig, StateDataKeyDefini
 from ismdb.misc_utils import create_state_id_by_state
 from ismdb.postgres_storage_class import PostgresDatabaseStorage
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
+# DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres1@localhost:5432/postgres")
+
+DATABASE_URL = "postgresql://ism_db_user:32abd80d50ab44637e2a0c44ac65eb828b798da1d53d916d@localhost:5434/ism_db"
 
 # model = create_mock_model()
 db_storage = PostgresDatabaseStorage(database_url=DATABASE_URL)

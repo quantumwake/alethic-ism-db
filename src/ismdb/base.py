@@ -197,21 +197,28 @@ class BaseDatabaseAccess:
         group_by_fields = []
         select_fields = []
 
-        # Iterate through the conditions_and_grouping list to build WHERE and GROUP BY clauses
+        # Iterate through the conditions_and_grouping list to build WHERE, SELECT, and GROUP BY clauses
         for field_config in conditions_and_grouping:
+            # Handle WHERE clause conditions
             if field_config.use_in_where and field_config.value is not None:
                 where_clauses.append(f"{field_config.field_name} = %s")
                 params.append(field_config.value)
-            if field_config.use_in_group_by:
+
+            # Check if this field has an aggregate function
+            aggregate = getattr(field_config, 'aggregate', None)
+
+            if aggregate:
+                # This is an aggregate field (e.g., SUM, MAX, AVG, COUNT)
+                aggregate_upper = aggregate.upper()
+                select_fields.append(f"{aggregate_upper}({field_config.field_name}) AS {field_config.field_name}")
+            elif field_config.use_in_group_by:
+                # This is a dimension field for grouping
                 group_by_fields.append(field_config.field_name)
                 select_fields.append(field_config.field_name)
 
         # Append WHERE clause to SQL
         if where_clauses:
             base_sql += " WHERE " + " AND ".join(where_clauses)
-
-        # Add aggregation fields to SELECT
-        select_fields += ["SUM(unit_count) AS total", "0.0 AS total_cost"]
 
         # Construct the final SQL query
         final_sql = f"SELECT {', '.join(select_fields)} {base_sql}"
