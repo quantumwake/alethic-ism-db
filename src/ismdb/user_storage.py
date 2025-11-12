@@ -28,7 +28,7 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePoo
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO user_profile (user_id, email, name, max_agentic_units, created_date) 
+                    INSERT INTO user_profile (user_id, email, name, tier_id, created_date) 
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) 
                     DO UPDATE SET 
@@ -40,8 +40,8 @@ class UserProfileDatabaseStorage(UserProfileStorage, BaseDatabaseAccessSinglePoo
                     user_profile.user_id,
                     user_profile.email,
                     user_profile.name,
-                    user_profile.max_agentic_units,
-                    dt.datetime.utcnow()
+                    user_profile.tier_id,
+                    dt.datetime.now(dt.timezone.utc)
                 ]
                 cursor.execute(sql, values)
 

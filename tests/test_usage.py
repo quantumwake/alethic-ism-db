@@ -71,6 +71,13 @@ def test_fetch_usage_report_with_multiple_aggregates():
 
     assert usage is not None
 
+def test_fetch_user_project_usage_report():
+    report = db_storage.fetch_user_project_current_usage_report(
+        user_id="dc688d73-af47-b1df-a24e-b7dfdb618b54",
+    )
+
+    assert report is not None
+
 def test_fetch_usage_report_total_grouping():
     """
     Test grouping by day-level dimensions to aggregate daily usage.
