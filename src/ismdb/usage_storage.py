@@ -149,47 +149,54 @@ class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
             lambda row: model(**row)  # -> T
         )
 
-
-    def fetch_user_project_current_usage_report(self, user_id: str) -> UserProjectCurrentUsageReport | None:
-        report = self.fetch_usage_report_generic(
-            table_or_view="user_project_current_usage_report",
-            model=UserProjectCurrentUsageReport,
-            user_id=FieldConfig("user_id", value=user_id, use_in_group_by=True, use_in_where=True),
-            tier_id=FieldConfig("tier_id", value=None, use_in_group_by=True, use_in_where=False),
+    def fetch_user_project_current_usage_report(self, user_id: str,
+                                                project_id: str = None) -> UserProjectCurrentUsageReport | None:
+        kwargs = {
+            "table_or_view": "user_project_current_usage_report",
+            "model": UserProjectCurrentUsageReport,
+            "user_id": FieldConfig("user_id", value=user_id, use_in_group_by=True, use_in_where=True),
+            "tier_id": FieldConfig("tier_id", value=None, use_in_group_by=True, use_in_where=False),
 
             ### tier / quota token limits for a period
-            limit_per_minute=FieldConfig("limit_token_per_minute", value=None, use_in_where=False, aggregate="MAX"),
-            limit_per_hour=FieldConfig("limit_token_per_hour", value=None, use_in_where=False, aggregate="MAX"),
-            limit_per_day=FieldConfig("limit_token_per_day", value=None, use_in_where=False, aggregate="MAX"),
-            limit_per_month=FieldConfig("limit_token_per_month", value=None, use_in_where=False, aggregate="MAX"),
-            limit_per_year=FieldConfig("limit_token_per_year", value=None, use_in_where=False, aggregate="MAX"),
+            "limit_per_minute": FieldConfig("limit_token_per_minute", value=None, use_in_where=False, aggregate="MAX"),
+            "limit_per_hour": FieldConfig("limit_token_per_hour", value=None, use_in_where=False, aggregate="MAX"),
+            "limit_per_day": FieldConfig("limit_token_per_day", value=None, use_in_where=False, aggregate="MAX"),
+            "limit_per_month": FieldConfig("limit_token_per_month", value=None, use_in_where=False, aggregate="MAX"),
+            "limit_per_year": FieldConfig("limit_token_per_year", value=None, use_in_where=False, aggregate="MAX"),
 
             ### tier / quotas cost limits for a period
-            limit_cost_per_minute=FieldConfig("limit_cost_per_minute", value=None, use_in_where=True, aggregate="MAX"),
-            limit_cost_per_hour=FieldConfig("limit_cost_per_hour", value=None,  use_in_where=True, aggregate="MAX"),
-            limit_cost_per_day=FieldConfig("limit_cost_per_day", value=None, use_in_where=True, aggregate="MAX"),
-            limit_cost_per_month=FieldConfig("limit_cost_per_month", value=None, use_in_where=True, aggregate="MAX"),
-            limit_cost_per_year=FieldConfig("limit_cost_per_year", value=None, use_in_where=True, aggregate="MAX"),
+            "limit_cost_per_minute": FieldConfig("limit_cost_per_minute", value=None, use_in_where=True,
+                                                 aggregate="MAX"),
+            "limit_cost_per_hour": FieldConfig("limit_cost_per_hour", value=None, use_in_where=True, aggregate="MAX"),
+            "limit_cost_per_day": FieldConfig("limit_cost_per_day", value=None, use_in_where=True, aggregate="MAX"),
+            "limit_cost_per_month": FieldConfig("limit_cost_per_month", value=None, use_in_where=True, aggregate="MAX"),
+            "limit_cost_per_year": FieldConfig("limit_cost_per_year", value=None, use_in_where=True, aggregate="MAX"),
 
             # current running costs
-            cur_minute_total_cost=FieldConfig("cur_minute_total_cost", value=None, use_in_where=True, aggregate="SUM"),
-            cur_hour_total_cost=FieldConfig("cur_hour_total_cost", value=None, use_in_where=True, aggregate="SUM"),
-            cur_day_total_cost=FieldConfig("cur_day_total_cost", value=None, use_in_where=True, aggregate="SUM"),
-            cur_month_total_cost=FieldConfig("cur_month_total_cost", value=None, use_in_where=True, aggregate="SUM"),
-            cur_year_total_cost=FieldConfig("cur_year_total_cost", value=None, use_in_where=True, aggregate="SUM"),
+            "cur_minute_total_cost": FieldConfig("cur_minute_total_cost", value=None, use_in_where=True,
+                                                 aggregate="SUM"),
+            "cur_hour_total_cost": FieldConfig("cur_hour_total_cost", value=None, use_in_where=True, aggregate="SUM"),
+            "cur_day_total_cost": FieldConfig("cur_day_total_cost", value=None, use_in_where=True, aggregate="SUM"),
+            "cur_month_total_cost": FieldConfig("cur_month_total_cost", value=None, use_in_where=True, aggregate="SUM"),
+            "cur_year_total_cost": FieldConfig("cur_year_total_cost", value=None, use_in_where=True, aggregate="SUM"),
 
             ##
-            pct_minute_tokens_used=FieldConfig("pct_minute_tokens_used", value=None, aggregate="SUM"),
-            pct_hour_tokens_used=FieldConfig("pct_hour_tokens_used", value=None, aggregate="SUM"),
-            pct_day_tokens_used=FieldConfig("pct_day_tokens_used", value=None, aggregate="SUM"),
-            pct_month_tokens_used=FieldConfig("pct_month_tokens_used", value=None, aggregate="SUM"),
-            pct_year_tokens_used=FieldConfig("pct_year_tokens_used", value=None, aggregate="SUM"),
-            pct_minute_cost_used=FieldConfig("pct_minute_cost_used", value=None, aggregate="SUM"),
-            pct_hour_cost_used=FieldConfig("pct_hour_cost_used", value=None, aggregate="SUM"),
-            pct_day_cost_used=FieldConfig("pct_day_cost_used", value=None, aggregate="SUM"),
-            pct_month_cost_used=FieldConfig("pct_month_cost_used", value=None, aggregate="SUM"),
-            pct_year_cost_used=FieldConfig("pct_year_cost_used", value=None, aggregate="SUM"),
-        )
+            "pct_minute_tokens_used": FieldConfig("pct_minute_tokens_used", value=None, aggregate="SUM"),
+            "pct_hour_tokens_used": FieldConfig("pct_hour_tokens_used", value=None, aggregate="SUM"),
+            "pct_day_tokens_used": FieldConfig("pct_day_tokens_used", value=None, aggregate="SUM"),
+            "pct_month_tokens_used": FieldConfig("pct_month_tokens_used", value=None, aggregate="SUM"),
+            "pct_year_tokens_used": FieldConfig("pct_year_tokens_used", value=None, aggregate="SUM"),
+            "pct_minute_cost_used": FieldConfig("pct_minute_cost_used", value=None, aggregate="SUM"),
+            "pct_hour_cost_used": FieldConfig("pct_hour_cost_used", value=None, aggregate="SUM"),
+            "pct_day_cost_used": FieldConfig("pct_day_cost_used", value=None, aggregate="SUM"),
+            "pct_month_cost_used": FieldConfig("pct_month_cost_used", value=None, aggregate="SUM"),
+            "pct_year_cost_used": FieldConfig("pct_year_cost_used", value=None, aggregate="SUM"),
+        }
+
+        if project_id is not None:
+            kwargs["project_id"] = FieldConfig("project_id", value=project_id, use_in_group_by=True, use_in_where=True)
+
+        report = self.fetch_usage_report_generic(**kwargs)
 
         if len(report) == 0:
             return None
@@ -197,8 +204,8 @@ class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
         if len(report) == 1:
             return report[0]
 
-        raise ValueError(f"Expected 0 or 1 usage reports for user_id {user_id}, got {len(report)}, which is unexpected.")
-
+        raise ValueError(
+            f"Expected 0 or 1 usage reports for user_id {user_id}, got {len(report)}, which is unexpected.")
 
     # def fetch_user_usage_summary(self, user_id: str) -> List[UsageReport]:
     #     """
