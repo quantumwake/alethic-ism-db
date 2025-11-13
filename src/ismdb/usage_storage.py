@@ -196,9 +196,10 @@ class UsageDatabaseStorage(UsageStorage, BaseDatabaseAccessSinglePool):
         if project_id is not None:
             kwargs["project_id"] = FieldConfig("project_id", value=project_id, use_in_group_by=True, use_in_where=True)
 
+        # Fetch the report
         report = self.fetch_usage_report_generic(**kwargs)
 
-        if len(report) == 0:
+        if not report or len(report) == 0:
             return None
 
         if len(report) == 1:
