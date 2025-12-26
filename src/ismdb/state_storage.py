@@ -1,7 +1,9 @@
+import json
 import logging as log
 import uuid
 
 from typing import Any, Optional, Dict, List, Callable
+from psycopg2.extras import Json
 
 from ismcore.model.processor_state import (
     # state
@@ -26,16 +28,23 @@ logging = log.getLogger(__name__)
 
 class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
-    def fetch_state_data_by_column_id(self, column_id: int, state_count: int, offset: int | None = None, limit: int = 1000) -> Optional[StateDataRowColumnData]:
+    def fetch_state_data_by_column_id(self, column_id: int, state_count: int, data_type: str = 'str', offset: int | None = None, limit: int = 1000) -> Optional[StateDataRowColumnData]:
         conn = self.create_connection()
+        is_json_column = data_type == 'json'
 
         try:
             with conn.cursor() as cursor:
+                # Select from appropriate column based on data_type
+                value_expr = "data_json_value" if is_json_column else "data_value"
+
                 if offset is None:
-                    sql = f"select * from state_column_data where column_id = %s order by data_index"
+                    sql = f"""SELECT column_id, data_index, {value_expr}
+                             FROM state_column_data WHERE column_id = %s ORDER BY data_index"""
                     cursor.execute(sql, [column_id])
                 else:
-                    sql = f"select * from state_column_data where column_id = %s and data_index >= %s and data_index < %s order by data_index"
+                    sql = f"""SELECT column_id, data_index, {value_expr}
+                             FROM state_column_data WHERE column_id = %s AND data_index >= %s AND data_index < %s
+                             ORDER BY data_index"""
                     cursor.execute(sql, [column_id, offset, offset + limit])
 
                 rows = cursor.fetchall()
@@ -46,7 +55,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                     values = [None] * array_size  # Initialize with None for all rows
                     for row in rows:
                         data_index = row[1]  # Actual row position
-                        data_value = row[2]  # The value
+                        data_value = row[2]  # The value (from COALESCE)
                         # Adjust index by offset when paginating
                         adjusted_index = data_index - offset if offset is not None else data_index
                         values[adjusted_index] = data_value
@@ -333,13 +342,50 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         conn = self.create_connection()
         persisted_position = state.persisted_position   # keep track and update at the end
+
+        # SQL statements for incremental inserts
+        insert_sql_text = "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)"
+        insert_sql_json = "INSERT INTO state_column_data (column_id, data_index, data_json_value) VALUES (%s, %s, %s)"
+
+        # SQL statements for merge/upsert
+        merge_sql_text = """
+            MERGE INTO state_column_data AS target
+            USING (SELECT %s AS column_id, %s AS data_index, %s AS data_value) AS source
+               ON target.column_id = source.column_id
+              AND target.data_index = source.data_index
+            WHEN MATCHED THEN
+                UPDATE SET data_value = source.data_value
+            WHEN NOT MATCHED THEN
+                INSERT (column_id, data_index, data_value)
+                VALUES (source.column_id, source.data_index, source.data_value)
+            """.strip()
+
+        merge_sql_json = """
+            MERGE INTO state_column_data AS target
+            USING (SELECT %s AS column_id, %s AS data_index, %s AS data_json_value) AS source
+               ON target.column_id = source.column_id
+              AND target.data_index = source.data_index
+            WHEN MATCHED THEN
+                UPDATE SET data_json_value = source.data_json_value
+            WHEN NOT MATCHED THEN
+                INSERT (column_id, data_index, data_json_value)
+                VALUES (source.column_id, source.data_index, source.data_json_value)
+            """.strip()
+
         try:
             track_mapping = set()
 
-            def create_batch_row(data_index, column_row_data):
-                if column == 'state_key':
+            def create_batch_row(column_name, column_id, data_index, column_row_data, is_json: bool):
+                if column_name == 'state_key':
                     track_mapping.add(column_row_data)
 
+                # For JSON columns, wrap value with Json adapter
+                if is_json and column_row_data is not None:
+                    try:
+                        parsed_value = json.loads(column_row_data) if isinstance(column_row_data, str) else column_row_data
+                        return [column_id, data_index, Json(parsed_value)]
+                    except (json.JSONDecodeError, TypeError):
+                        return [column_id, data_index, Json(column_row_data)]
                 return [column_id, data_index, column_row_data]
 
             with (conn.cursor() as cursor):
@@ -350,73 +396,37 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                         continue
 
                     column_id = header.id
+                    is_json_column = header.data_type == 'json'
+                    logging.info(f'column={column}, data_type={header.data_type}, is_json_column={is_json_column}')
 
-                    # incrementally adding data in batches, instead of iterating the entire set again
+                    # incrementally adding data in batches
                     if incremental:
                         data_count = len(state.data[column].values)
                         offset = state.persisted_position + 1
                         batch_size = 5000
+                        insert_sql = insert_sql_json if is_json_column else insert_sql_text
 
                         while offset < data_count:
-                            # Fix: use min() to properly limit batch size
                             end_index = min(offset + batch_size, data_count)
 
                             insert_batch = [
-                                create_batch_row(
-                                    data_index + offset,  # Correct: absolute index in full dataset
-                                    column_row_data
-                                )
+                                create_batch_row(column, column_id, data_index + offset, column_row_data, is_json_column)
                                 for data_index, column_row_data in
                                 enumerate(state.data[column].values[offset:end_index])
                             ]
 
-                            cursor.executemany(
-                                "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
-                                insert_batch
-                            )
+                            cursor.executemany(insert_sql, insert_batch)
 
                             offset = end_index
                             persisted_position = end_index - 1
-                        #
-                        # offset = state.persisted_position + 1  # the last persisted position
-                        # batch_size = 5000                      # maximum batch size
-                        # while offset < data_count:
-                        #     maximum_limit = max(offset + batch_size, data_count)
-                        #
-                        #     insert_batch = [
-                        #         create_batch_row(data_index + offset, column_row_data)
-                        #         for data_index, column_row_data in
-                        #         enumerate(state.data[column].values[offset : maximum_limit])
-                        #     ]
-                        #
-                        #     cursor.executemany(
-                        #         "INSERT INTO state_column_data (column_id, data_index, data_value) VALUES (%s, %s, %s)",
-                        #         insert_batch)
-                        #     offset += batch_size
-                        #
+
                     else:
-
-                        sql = """
-                            MERGE INTO state_column_data AS target
-                            USING (SELECT %s AS column_id, %s AS data_index, %s AS data_value) AS source
-                               ON target.column_id = source.column_id 
-                              AND target.data_index = source.data_index
-                            WHEN MATCHED THEN 
-                                UPDATE SET data_value = source.data_value
-                            WHEN NOT MATCHED THEN 
-                                INSERT (column_id, data_index, data_value)
-                                VALUES (source.column_id, source.data_index, source.data_value)
-                            """.strip()
-
+                        merge_sql = merge_sql_json if is_json_column else merge_sql_text
                         track_mapping = None
 
                         for data_index, column_row_data in enumerate(state.data[column].values):
-                            values = [
-                                column_id,
-                                data_index,
-                                column_row_data
-                            ]
-                            cursor.execute(sql, values)
+                            row_data = create_batch_row(column, column_id, data_index, column_row_data, is_json_column)
+                            cursor.execute(merge_sql, row_data)
                             persisted_position = data_index
 
             state.persisted_position = persisted_position
@@ -788,7 +798,7 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
 
         # rebuild the data values by column and values
         return {
-            column: self.fetch_state_data_by_column_id(column_definition.id, state_count, offset=offset, limit=limit)
+            column: self.fetch_state_data_by_column_id(column_definition.id, state_count, data_type=column_definition.data_type, offset=offset, limit=limit)
             for column, column_definition in columns.items()
             # if not column_definition.value  # TODO REMOVE since we now store all constant and expression values in .data[col].values[]  ...old: only return row data that is not a function or a constant
         }
@@ -953,9 +963,24 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             with conn.cursor() as cursor:
                 # Start transaction explicitly
                 cursor.execute("BEGIN")
+                # SQL statements for text vs json columns
+                insert_sql_text = """
+                    INSERT INTO state_column_data (column_id, data_index, data_value)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (column_id, data_index)
+                    DO UPDATE SET data_value = EXCLUDED.data_value
+                """
+                insert_sql_json = """
+                    INSERT INTO state_column_data (column_id, data_index, data_json_value)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (column_id, data_index)
+                    DO UPDATE SET data_json_value = EXCLUDED.data_json_value
+                """
+
                 # Process each column separately with batched inserts
                 for column_name, column_def in columns.items():
                     column_id = column_def.id
+                    is_json_column = column_def.data_type == 'json'
 
                     # Build batch of (column_id, data_index, value) for this column across all rows
                     column_batch = []
@@ -967,20 +992,16 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                         if column_name == 'state_key' and column_value:
                             track_mapping_set.add(column_value)
 
+                        # Wrap JSON values with Json adapter
+                        if is_json_column and column_value is not None:
+                            column_value = Json(column_value)
+
                         column_batch.append([column_id, data_index, column_value])
 
                     # Batch insert all rows for this column with ON CONFLICT handling
-                    # ON CONFLICT works with executemany in psycopg2
                     if column_batch:
-                        cursor.executemany(
-                            """
-                            INSERT INTO state_column_data (column_id, data_index, data_value)
-                            VALUES (%s, %s, %s)
-                            ON CONFLICT (column_id, data_index)
-                            DO UPDATE SET data_value = EXCLUDED.data_value
-                            """,
-                            column_batch
-                        )
+                        insert_sql = insert_sql_json if is_json_column else insert_sql_text
+                        cursor.executemany(insert_sql, column_batch)
 
                 # Batch insert state mappings
                 if track_mapping_set:
