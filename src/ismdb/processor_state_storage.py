@@ -1,7 +1,8 @@
+import json
 import logging as log
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
-from ismcore.model.base_model import ProcessorState, ProcessorStateDirection, ProcessorStatusCode
+from ismcore.model.base_model import ProcessorState, ProcessorStateDirection, ProcessorStatusCode, EdgeFunctionConfig
 from ismcore.storage.processor_state_storage import ProcessorStateRouteStorage
 
 from ismdb.base import BaseDatabaseAccessSinglePool
@@ -117,24 +118,22 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
                         status,
                         count,
                         current_index,
-                        maximum_index
+                        maximum_index,
+                        edge_function
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (processor_id, state_id, direction)
-                    DO UPDATE SET 
-                        count = EXCLUDED.count, 
+                    DO UPDATE SET
+                        count = EXCLUDED.count,
                         status = EXCLUDED.status,
-                        current_index = EXCLUDED.current_index, 
-                        maximum_index = EXCLUDED.maximum_index
-                    RETURNING internal_id 
+                        current_index = EXCLUDED.current_index,
+                        maximum_index = EXCLUDED.maximum_index,
+                        edge_function = EXCLUDED.edge_function
+                    RETURNING internal_id
                 """
 
-                # generate a new processor id based on the direction of the edge
-                # if not processor_state.id:
-                #     if processor_state.direction.INPUT:
-                #         processor_state.id = f'{processor_state.state_id}:{processor_state.processor_id}'
-                #     elif processor_state.direction.OUTPUT:
-                #         processor_state.id = f'{processor_state.processor_id}:{processor_state.state_id}'
+                edge_function_json = processor_state.edge_function.model_dump_json() \
+                    if processor_state.edge_function else None
 
                 cursor.execute(sql, [
                     processor_state.id,
@@ -144,7 +143,8 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
                     processor_state.status.value,
                     processor_state.count,
                     processor_state.current_index,
-                    processor_state.maximum_index
+                    processor_state.maximum_index,
+                    edge_function_json
                 ])
 
                 # fetch the internal id from the response of the executed statement
@@ -156,6 +156,43 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
             return processor_state
         except Exception as e:
             logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def fetch_edge_function_config(self, route_id: str) -> Optional[EdgeFunctionConfig]:
+        """Fetch edge function configuration for a processor state route."""
+        result = self.execute_query_fixed(
+            sql="SELECT edge_function FROM processor_state WHERE id = %s",
+            params=[route_id],
+            mapper=lambda row: row.get('edge_function')
+        )
+
+        if result and result[0]:
+            edge_function_data = result[0]
+            if isinstance(edge_function_data, str):
+                edge_function_data = json.loads(edge_function_data)
+            return EdgeFunctionConfig(**edge_function_data)
+        return None
+
+    def update_edge_function_config(self, route_id: str, config: EdgeFunctionConfig) -> Optional[EdgeFunctionConfig]:
+        """Update edge function configuration for a processor state route."""
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                config_json = config.model_dump_json() if config else None
+                cursor.execute(
+                    "UPDATE processor_state SET edge_function = %s WHERE id = %s RETURNING edge_function",
+                    [config_json, route_id]
+                )
+                result = cursor.fetchone()
+            conn.commit()
+
+            if result and result[0]:
+                return EdgeFunctionConfig(**result[0])
+            return config
+        except Exception as e:
+            logging.error(f"Failed to update edge function config: {e}")
             raise e
         finally:
             self.release_connection(conn)

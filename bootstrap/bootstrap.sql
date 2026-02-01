@@ -178,19 +178,19 @@ CREATE TABLE PROCESSOR_CLASS (
 );
 
 INSERT INTO PROCESSOR_CLASS VALUES
-    ('CODEPROCESSING'),
-    ('NATURALLANGUAGEPROCESSING'),
-    ('IMAGEPROCESSING'),
-    ('DATATRANSFORMATION'),
-    ('TEXTPROCESSING'),
-    ('VIDEOPROCESSING'),
-    ('AUDIOPROCESSING'),
-    ('DATAANALYSIS'),
-    ('SIGNALPROCESSING'),
-    ('MACHINELEARNING'),
-    ('DATABASEPROCESSING'),
-    ('INTERACTION'),
-    ('PROPRIETARY')
+    ('CodeProcessing'),
+    ('NaturalLanguageProcessing'),
+    ('ImageProcessing'),
+    ('DataTransformation'),
+    ('TextProcessing'),
+    ('VideoProcessing'),
+    ('AudioProcessing'),
+    ('DataAnalysis'),
+    ('SignalProcessing'),
+    ('MachineLearning'),
+    ('DatabaseProcessing'),
+    ('Interaction'),
+    ('Proprietary')
     ON CONFLICT DO NOTHING;
 
 COMMIT;
@@ -379,6 +379,7 @@ CREATE TABLE PROCESSOR_STATE (
     COUNT INT NULL,
     CURRENT_INDEX INT NULL,
     MAXIMUM_INDEX INT NULL,
+    EDGE_FUNCTION JSONB NULL,
     PRIMARY KEY (PROCESSOR_ID, STATE_ID, DIRECTION),
     UNIQUE (INTERNAL_ID),
     UNIQUE (ID)
