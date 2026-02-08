@@ -34,7 +34,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
     #         mapper=lambda row: ProcessorStateDetail(**row))
 
     def fetch_processor_state_routes_by_project_id(self, project_id) -> Optional[List[ProcessorState]]:
+        """
+        Fetch all processor state routes associated with a project.
 
+        Args:
+            project_id: The project ID to filter by
+
+        Returns:
+            List of ProcessorState objects for the project, or None if not found
+        """
         processor_states = self.execute_query_fixed(
             sql="""
                 SELECT * FROM processor_state 
@@ -49,7 +57,18 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
         return processor_states
 
     def fetch_processor_state_route_by_route_id(self, route_id: str) -> Optional[ProcessorState]:
-        # fetch the processors to forward the state query to
+        """
+        Fetch a single processor state route by its route ID.
+
+        Args:
+            route_id: The unique route identifier
+
+        Returns:
+            The ProcessorState object if found, None otherwise
+
+        Raises:
+            ValueError: If more than one route is found (indicates storage implementation issue)
+        """
         forward_processor_state = self.fetch_processor_state_route(route_id=route_id)
 
         # more than one route found, this must be a storage class implementation issue
@@ -67,7 +86,22 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
                                     direction: ProcessorStateDirection = None,
                                     status: ProcessorStatusCode = None) \
             -> Optional[List[ProcessorState]]:
+        """
+        Fetch processor state routes matching the given criteria.
 
+        All parameters are optional and act as filters. Only non-None parameters
+        are included in the WHERE clause.
+
+        Args:
+            route_id: Filter by route ID
+            processor_id: Filter by processor ID
+            state_id: Filter by state ID
+            direction: Filter by direction (INPUT/OUTPUT)
+            status: Filter by status code
+
+        Returns:
+            List of matching ProcessorState objects, or None if not found
+        """
         return self.execute_query_many(
             sql="SELECT * FROM processor_state",
             conditions={
@@ -80,6 +114,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
             mapper=lambda row: ProcessorState(**row))
 
     def delete_processor_state_route_by_id(self, processor_state_id: str) -> int:
+        """
+        Delete a processor state route by its ID.
+
+        Args:
+            processor_state_id: The ID of the processor state route to delete
+
+        Returns:
+            Number of rows deleted (0 or 1)
+        """
         return self.execute_delete_query(
             "DELETE FROM processor_state",
             conditions={
@@ -88,6 +131,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
         )
 
     def delete_processor_state_route(self, route_id: str) -> int:
+        """
+        Delete a processor state route by its route ID.
+
+        Args:
+            route_id: The route ID to delete
+
+        Returns:
+            Number of rows deleted (0 or 1)
+        """
         return self.execute_delete_query(
             "DELETE FROM processor_state",
             conditions={
@@ -96,6 +148,15 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
         )
 
     def delete_processor_state_routes_by_state_id(self, state_id: str) -> int:
+        """
+        Delete all processor state routes associated with a state.
+
+        Args:
+            state_id: The state ID whose routes should be deleted
+
+        Returns:
+            Number of rows deleted
+        """
         return self.execute_delete_query(
             "DELETE FROM processor_state",
             conditions={
@@ -105,7 +166,23 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
 
     def insert_processor_state_route(self, processor_state: ProcessorState) \
             -> ProcessorState:
+        """
+        Insert or update a processor state route (upsert).
 
+        Uses PostgreSQL ON CONFLICT to perform an upsert on the composite key
+        (processor_id, state_id, direction). On conflict, updates count, status,
+        current_index, maximum_index, and edge_function.
+
+        WARNING: This method updates ALL mutable fields on conflict. If you only
+        need to update the status, use update_processor_state_route_status() instead
+        to avoid overwriting other fields like edge_function.
+
+        Args:
+            processor_state: The ProcessorState object to insert/update
+
+        Returns:
+            The ProcessorState with internal_id populated from the database
+        """
         try:
             conn = self.create_connection()
             with (conn.cursor() as cursor):
@@ -156,6 +233,36 @@ class ProcessorStateDatabaseStorage(ProcessorStateRouteStorage, BaseDatabaseAcce
             return processor_state
         except Exception as e:
             logging.error(e)
+            raise e
+        finally:
+            self.release_connection(conn)
+
+    def update_processor_state_route_status(self, route_id: str, status: ProcessorStatusCode) -> int:
+        """
+        Update only the status field of a processor state route.
+
+        This method should be used when you only need to change the status without
+        affecting other fields like edge_function, count, current_index, etc.
+
+        Args:
+            route_id: The route ID to update
+            status: The new status to set
+
+        Returns:
+            Number of rows affected (0 or 1)
+        """
+        try:
+            conn = self.create_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE processor_state SET status = %s WHERE id = %s",
+                    [status.value, route_id]
+                )
+                row_count = cursor.rowcount
+            conn.commit()
+            return row_count
+        except Exception as e:
+            logging.error(f"Failed to update processor state route status: {e}")
             raise e
         finally:
             self.release_connection(conn)
