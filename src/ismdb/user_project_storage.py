@@ -1,3 +1,4 @@
+import json
 import logging as log
 import datetime as dt
 import uuid
@@ -67,20 +68,26 @@ class UserProjectDatabaseStorage(UserProjectStorage, BaseDatabaseAccessSinglePoo
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO user_project (project_id, project_name, user_id, created_date) 
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (project_id) 
-                    DO UPDATE SET project_name = EXCLUDED.project_name
+                    INSERT INTO user_project (project_id, project_name, user_id, created_date, settings)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (project_id)
+                    DO UPDATE SET
+                        project_name = EXCLUDED.project_name,
+                        settings = EXCLUDED.settings
                 """
 
                 # assign project id if project id is not assigned
                 user_project.project_id = user_project.project_id if user_project.project_id else str(uuid.uuid4())
 
+                # Convert settings dict to JSON string if present
+                settings_json = json.dumps(user_project.settings) if user_project.settings else None
+
                 values = [
                     user_project.project_id,
                     user_project.project_name,
                     user_project.user_id,
-                    dt.datetime.now()
+                    dt.datetime.now(),
+                    settings_json
                 ]
                 cursor.execute(sql, values)
 

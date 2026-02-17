@@ -34,26 +34,32 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccessSinglePool):
 
                 sql = """
                            INSERT INTO workflow_node (
-                                node_id, 
-                                node_type, 
-                                node_label, 
-                                project_id, 
-                                object_id, 
-                                position_x, 
-                                position_y, 
-                                width, 
-                                height)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                           ON CONFLICT (node_id) 
-                           DO UPDATE SET 
+                                node_id,
+                                node_type,
+                                node_label,
+                                project_id,
+                                object_id,
+                                position_x,
+                                position_y,
+                                width,
+                                height,
+                                metadata)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT (node_id)
+                           DO UPDATE SET
                             node_label = EXCLUDED.node_label,
                             object_id=EXCLUDED.object_id,
                             node_type=EXCLUDED.node_type,
                             position_x=EXCLUDED.position_x,
                             position_y=EXCLUDED.position_y,
                             width=EXCLUDED.width,
-                            height=EXCLUDED.height
+                            height=EXCLUDED.height,
+                            metadata=EXCLUDED.metadata
                        """
+
+                # Convert metadata dict to JSON string if present
+                import json
+                metadata_json = json.dumps(node.metadata) if node.metadata else None
 
                 values = [
                     node.node_id,
@@ -64,7 +70,8 @@ class WorkflowDatabaseStorage(WorkflowStorage, BaseDatabaseAccessSinglePool):
                     node.position_x,
                     node.position_y,
                     node.width,
-                    node.height
+                    node.height,
+                    metadata_json
                 ]
                 cursor.execute(sql, values)
 
