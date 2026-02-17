@@ -1,4 +1,4 @@
-alethic-ism-core==1.0.49
+alethic-ism-core==1.0.50
 nats-py
 pyyaml
 psycopg2
