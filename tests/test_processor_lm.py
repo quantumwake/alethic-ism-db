@@ -18,7 +18,7 @@ storage = PostgresDatabaseStorage(DATABASE_URL)
 
 class TestProcessorLM(BaseProcessorLM):
 
-    def _execute(self, user_prompt: str, system_prompt: str, values: dict):
+    async def execute_llm(self, user_prompt: str, system_prompt: str, values: dict):
         logging.debug(f'user_prompt: {user_prompt}')
 
         if user_prompt == 'Only provide the answer the following question: what color is the sky?':

@@ -16,7 +16,6 @@ from ismcore.model.processor_state import (
     BaseStateConfig,
     StateConfigVisual,
     StateConfigLM,
-    StateConfigStream,
     StateConfig,
     StateConfigCode)
 from ismcore.storage.processor_state_storage import StateStorage
@@ -135,18 +134,20 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             with conn.cursor() as cursor:
 
                 sql = """
-                    INSERT INTO state (id, project_id, state_type) 
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (id) 
-                    DO UPDATE SET 
-                        state_type = EXCLUDED.state_type
+                    INSERT INTO state (id, project_id, state_type, properties)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        state_type = EXCLUDED.state_type,
+                        properties = EXCLUDED.properties
                 """
 
                 # setup data values for state
                 values = [
                     state.id,
                     state.project_id,
-                    state.state_type
+                    state.state_type,
+                    json.dumps(state.properties) if state.properties else None
                 ]
 
                 cursor.execute(sql, values)
@@ -768,10 +769,6 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
         elif 'StateConfigVisual' == state_type:
             config = StateConfigVisual(
                 **general_attributes,
-                **config_attributes
-            )
-        elif 'StateConfigStream' == state_type:
-            config = StateConfigStream(
                 **config_attributes
             )
         elif 'StateConfigCode' == state_type:

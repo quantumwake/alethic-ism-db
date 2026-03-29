@@ -16,7 +16,6 @@ from ismcore.model.processor_state import (
     State,
     StateConfig,
     StateConfigLM,
-    StateConfigStream,
     StateDataKeyDefinition,
     StateDataColumnDefinition)
 
@@ -39,21 +38,6 @@ state_id = "fa000000-0000-0000-0000-0000000000fa"
 # set the timezone to UTC for test cases
 os.environ['TZ'] = 'UTC'
 time.tzset()  # Note: This works on Unix-like systems
-
-
-def test_state_config_stream():
-    state_config_stream = StateConfigStream(
-        name="test stream state",
-        storage_class="stream",
-        url="protocol://domain/{state_id}"
-    )
-
-    state = State(
-        state_id="hello world, yet another random stream state",
-        config=state_config_stream,
-        state_type="StateConfigStream"
-    )
-    state.state_type = "StateConfigStream"
 
 
 def test_state_key_definition_delete():

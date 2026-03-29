@@ -5,7 +5,7 @@ from typing import Optional, List
 from ismcore.model.base_model import ProcessorProvider
 from ismcore.storage.processor_state_storage import ProcessorProviderStorage
 
-from ismdb.base import BaseDatabaseAccessSinglePool
+from ismdb.base import BaseDatabaseAccessSinglePool, Condition
 
 logging = log.getLogger(__name__)
 
@@ -36,6 +36,28 @@ class ProcessorProviderDatabaseStorage(ProcessorProviderStorage, BaseDatabaseAcc
                 'project_id': project_id
             },
             mapper=lambda row: ProcessorProvider(**row))
+
+    def search_processor_providers(self,
+                                   name: str = None,
+                                   version: str = None,
+                                   class_name: str = None,
+                                   limit: int = 20) -> Optional[List[ProcessorProvider]]:
+        conditions = {}
+        if name:
+            conditions['name'] = Condition('ILIKE', f'%{name}%')
+        if version:
+            conditions['version'] = Condition('ILIKE', f'%{version}%')
+        if class_name:
+            conditions['class_name'] = Condition('ILIKE', f'%{class_name}%')
+
+        results = self.execute_query_many2(
+            sql=f"SELECT * FROM processor_provider",
+            conditions=conditions,
+            mapper=lambda row: ProcessorProvider(**row),
+        )
+        if results and len(results) > limit:
+            return results[:limit]
+        return results
 
     def insert_processor_provider(self, provider: ProcessorProvider) -> ProcessorProvider | None:
         conn = self.create_connection()
