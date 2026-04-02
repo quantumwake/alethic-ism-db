@@ -490,38 +490,48 @@ CREATE TABLE USER_SESSION_ACCESS (
     ACCESS_DATE TIMESTAMP NOT NULL
 );
 
+drop table if exists vault cascade;
+drop type if exists config_type cascade;
+drop table if exists config_map cascade;
 
+--------------------------
+---- VAULT START
+--------------------------
 -- DEFINE ENUM FOR CONFIGURATION TYPES
-CREATE TYPE CONFIG_TYPE AS ENUM ('SECRET', 'CONFIG_MAP');
+CREATE TYPE CONFIG_TYPE AS ENUM ('secret', 'config_map');
 
--- TABLE TO MANAGE ENCRYPTION KEY PROVIDERS
-CREATE TABLE VAULT (
-    ID VARCHAR(36) PRIMARY KEY, -- UNIQUE IDENTIFIER FOR THE PROVIDER
-    NAME VARCHAR(255) NOT NULL UNIQUE, -- PROVIDER NAME (E.G., AWS KMS, HASHICORP VAULT)
-    TYPE VARCHAR(50) NOT NULL, -- PROVIDER TYPE (E.G., 'KMS', 'VAULT', 'LOCAL')
-    METADATA JSONB, -- ADDITIONAL METADATA FOR THE PROVIDER (E.G., REGION, ENDPOINT)
-    CREATED_DATE TIMESTAMP DEFAULT NOW(),
-    UPDATED_DATE TIMESTAMP DEFAULT NOW()
+create table config_map
+(
+    id           varchar(36)  not null primary key,
+    name         varchar(255) not null,
+    type         config_type  not null,
+    data         jsonb        not null,
+    vault_key_id varchar(255),
+    vault_id     varchar(36),
+    owner_id     varchar(36),
+    created_at   timestamp default now(),
+    updated_at   timestamp default now(),
+    deleted_at   timestamp
 );
 
-CREATE TABLE CONFIG_MAP (
-    ID VARCHAR(36) PRIMARY KEY, -- USE UUID FOR UNIQUE IDENTIFIERS
-    NAME VARCHAR(255) NOT NULL, -- DESCRIPTIVE NAME FOR THE CONFIGURATION
-    TYPE CONFIG_TYPE NOT NULL, -- ENUM FOR 'SECRET' OR 'CONFIG_MAP'
-    DATA JSONB NOT NULL, -- CONFIGURATION DATA (ENCRYPTED OR PLAINTEXT)
-    VAULT_KEY_ID VARCHAR(255), -- ID OF THE ENCRYPTION KEY (NULLABLE)
-    VAULT_ID VARCHAR(36) REFERENCES VAULT (ID), -- REFERENCE TO ENCRYPTION KEY PROVIDER
-    OWNER_ID VARCHAR(36), -- OPTIONAL: OWNERSHIP FOR MULTI-TENANCY
-    CREATED_DATE TIMESTAMP DEFAULT NOW(),
-    UPDATED_DATE TIMESTAMP DEFAULT NOW(),
-    DELETED_DATE TIMESTAMP -- OPTIONAL: SOFT DELETE SUPPORT
+create index idx_configuration_data on config_map using gin (data jsonb_path_ops);
+create index idx_configuration_type on config_map (type);
+
+create table vault(
+    id         varchar(36) default gen_random_uuid() not null primary key,
+    name       varchar(255)                          not null,
+    owner_id   varchar(36)                           not null,
+    type       varchar(50)                           not null,
+    metadata   jsonb,
+    created_at timestamp with time zone,
+    updated_at timestamp with time zone
 );
 
--- INDEX FOR JSONB DATA TO OPTIMIZE QUERIES
-CREATE INDEX IDX_CONFIGURATION_DATA ON CONFIG_MAP USING GIN(DATA JSONB_PATH_OPS);
+create index idx_vault_type on vault (owner_id);
 
--- INDEX FOR FILTERING BY TYPE (OPTIONAL OPTIMIZATION)
-CREATE INDEX IDX_CONFIGURATION_TYPE ON CONFIG_MAP(TYPE);
+--------------------------
+---- VAULT END
+--------------------------
 
 -- TABLE FOR FILTERS
 CREATE TABLE FILTER (

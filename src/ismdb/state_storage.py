@@ -875,7 +875,11 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
             with conn.cursor() as cursor:
                 # Query chunk using the state_column view
                 sql = """
-                    SELECT sc.name, sd.data_index, sd.data_value
+                    SELECT sc.name, sd.data_index,
+                           CASE WHEN sc.data_type = 'json'
+                                THEN sd.data_json_value::text
+                                ELSE sd.data_value
+                           END AS data_value
                     FROM state_column sc
                     LEFT JOIN state_column_data sd ON sc.id = sd.column_id
                     WHERE sc.state_id = %s
