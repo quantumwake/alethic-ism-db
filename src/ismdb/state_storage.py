@@ -936,7 +936,12 @@ class StateDatabaseStorage(StateStorage, BaseDatabaseAccessSinglePool):
                 skip_data_append=True,  # Skip appending to in-memory arrays
                 scope_variable_mappings=scope_variable_mappings or {}
             )
-            transformed_query_states.append(transformed)
+            # apply_query_state fans an array-bearing entry out into multiple rows
+            # (returns a list) when persistence mode is INDIVIDUAL_ROWS; otherwise a dict.
+            if isinstance(transformed, list):
+                transformed_query_states.extend(transformed)
+            else:
+                transformed_query_states.append(transformed)
 
         # Use the transformed data for insertion
         query_states = transformed_query_states
